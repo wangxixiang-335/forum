@@ -1,0 +1,26 @@
+# Supabase 配置文件
+
+[general]
+project_id = "your-project-id"
+name = "forum-project"
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+
+[api]
+graphql_path = "/graphql/v1"
+rest_path = "/rest/v1"
+
+[db]
+port = 5432
+search_path = "public, auth, storage"
+
+[storage]
+file_size_limit = 52428800  # 50MB
+
+[realtime]
+port = 4000
+
+[analytics]
+enabled = true

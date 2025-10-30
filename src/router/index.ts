@@ -45,6 +45,30 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '个人中心', requiresAuth: true }
   },
   {
+    path: '/profile/:id',
+    name: 'UserProfile',
+    component: () => import('@/views/ProfileView.vue'),
+    meta: { title: '用户资料' }
+  },
+  {
+    path: '/messages',
+    name: 'MessageCenter',
+    component: () => import('@/views/MessageCenterView.vue'),
+    meta: { title: '消息中心', requiresAuth: true }
+  },
+  {
+    path: '/search',
+    name: 'Search',
+    component: () => import('@/views/SearchView.vue'),
+    meta: { title: '搜索' }
+  },
+  {
+    path: '/bookmarks',
+    name: 'Bookmarks',
+    component: () => import('@/views/BookmarksView.vue'),
+    meta: { title: '我的收藏', requiresAuth: true }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),
@@ -59,15 +83,94 @@ const router = createRouter({
 
 // 路由守卫 - 认证检查
 router.beforeEach(async (to, from, next) => {
-  const { useAuthStore } = await import('@/stores/auth')
-  const authStore = useAuthStore()
-  
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next('/login')
-  } else if (to.meta.requiresGuest && authStore.isAuthenticated) {
-    next('/')
-  } else {
+  try {
+    console.log('路由守卫：从', from.path, '到', to.path)
+    
+    // 检查是否访问需要认证的页面
+    if (to.meta.requiresAuth) {
+      console.log('需要认证的页面:', to.path)
+      
+      // 检查是否为开发模式
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      console.log('Supabase URL:', supabaseUrl)
+      
+      if (!supabaseUrl || supabaseUrl.includes('default.supabase.co')) {
+        console.log('开发模式：允许访问需要认证的页面')
+        next()
+        return
+      }
+      
+      // 生产模式下的认证检查
+      try {
+        const { useAuthStore } = await import('@/stores/auth')
+        const authStore = useAuthStore()
+        
+        console.log('Auth store状态:', {
+          user: !!authStore.user,
+          profile: !!authStore.profile,
+          isAuthenticated: authStore.isAuthenticated
+        })
+        
+        // 如果store中还没有用户信息，尝试初始化
+        if (!authStore.user) {
+          console.log('Auth store中没有用户信息，尝试初始化...')
+          await authStore.initializeAuth()
+          console.log('初始化后的状态:', {
+            user: !!authStore.user,
+            profile: !!authStore.profile,
+            isAuthenticated: authStore.isAuthenticated
+          })
+        }
+        
+        // 检查认证状态
+        if (authStore.isAuthenticated) {
+          console.log('用户已认证，允许访问')
+          next()
+          return
+        } else {
+          console.log('用户未认证，重定向到登录页面')
+          next('/login')
+          return
+        }
+      } catch (storeError) {
+        console.error('Auth store操作失败:', storeError)
+        console.log('认证检查失败，重定向到登录页面')
+        next('/login')
+        return
+      }
+    }
+    
+    // 检查访客页面
+    if (to.meta.requiresGuest) {
+      try {
+        const { useAuthStore } = await import('@/stores/auth')
+        const authStore = useAuthStore()
+        
+        if (authStore.isAuthenticated) {
+          next('/')
+          return
+        }
+      } catch (storeError) {
+        // 如果store加载失败，允许继续
+      }
+    }
+    
+    console.log('允许访问:', to.path)
     next()
+  } catch (error) {
+    console.error('路由守卫错误:', error)
+    // 如果认证检查失败，允许继续导航以避免阻塞
+    next()
+  }
+})
+
+// 处理路由加载错误
+router.onError((error) => {
+  console.error('路由加载错误:', error)
+  // 如果是动态导入错误，不要自动刷新页面，而是记录错误
+  if (error.message.includes('Failed to fetch dynamically imported module')) {
+    console.warn('检测到动态导入错误，但不自动刷新页面以避免循环刷新')
+    // 可以在这里显示用户友好的错误信息
   }
 })
 

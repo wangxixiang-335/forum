@@ -2,10 +2,10 @@
   <article class="post-card" :class="{ 'post-pinned': post.is_pinned }">
     <div class="post-header">
       <div class="user-info">
-        <img 
-          :src="post.profiles.avatar_url || '/default-avatar.png'" 
-          :alt="post.profiles.username"
-          class="avatar"
+        <UserAvatar 
+          :username="post.profiles.username" 
+          :avatar-id="post.profiles.avatar_url"
+          size="40px"
         />
         <div class="user-details">
           <span class="username" :class="getLevelClass(post.profiles.level)">
@@ -19,14 +19,36 @@
         <div v-if="post.is_pinned" class="pinned-indicator">
           <span>📌 置顶</span>
         </div>
-        <button 
-          v-if="isAuthor" 
-          class="delete-btn" 
-          @click="handleDeletePost"
-          title="删除帖子"
-        >
-          🗑️
-        </button>
+        <div class="action-buttons">
+          <button 
+            v-if="isAuthenticated && !isAuthor"
+            class="action-btn message-btn"
+            @click="showMessageModal"
+            title="发送私信"
+          >
+            <i class="bi bi-envelope"></i>
+            <span>私信</span>
+          </button>
+          <button 
+            v-if="isAuthenticated"
+            class="action-btn bookmark-btn"
+            :class="{ active: isBookmarked }"
+            @click="handleBookmark"
+            title="收藏帖子"
+          >
+            <i class="bi" :class="isBookmarked ? 'bi-bookmark-fill' : 'bi-bookmark'"></i>
+            <span>{{ isBookmarked ? '已收藏' : '收藏' }}</span>
+          </button>
+          <button 
+            v-if="isAuthor" 
+            class="action-btn delete-btn" 
+            @click="handleDeletePost"
+            title="删除帖子"
+          >
+            <i class="bi bi-trash"></i>
+            <span>删除</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -56,21 +78,55 @@
           :class="{ active: post.user_has_liked }"
           @click="$emit('like', post.id)"
         >
-          👍 {{ post.like_count }}
+          <i class="bi" :class="post.user_has_liked ? 'bi-heart-fill' : 'bi-heart'"></i>
+          <span>点赞 {{ post.like_count }}</span>
         </button>
         <button class="interaction-btn" @click="$emit('comment', post.id)">
-          💬 {{ post.comment_count }}
+          <i class="bi bi-chat"></i>
+          <span>评论 {{ post.comment_count }}</span>
         </button>
-        <span class="view-count">👁️ {{ post.view_count }}</span>
+        <span class="view-count">
+          <i class="bi bi-eye"></i>
+          <span>浏览 {{ post.view_count }}</span>
+        </span>
       </div>
     </div>
+
+    <!-- 私信模态框 -->
+    <SendMessageModal
+      v-if="showMessageModalVisible"
+      :recipient="{
+        id: post.user_id,
+        username: post.profiles.username,
+        avatar_url: post.profiles.avatar_url,
+        level: post.profiles.level
+      }"
+      @close="showMessageModalVisible = false"
+      @sent="handleMessageSent"
+    />
+
+    <!-- 收藏模态框 -->
+    <BookmarkModal
+      v-if="showBookmarkModalVisible"
+      :post="{
+        id: post.id,
+        title: post.title,
+        content: post.content
+      }"
+      @close="showBookmarkModalVisible = false"
+      @bookmarked="handleBookmarked"
+    />
   </article>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePostStore } from '@/stores/posts'
+import { useBookmarkStore } from '@/stores/bookmarks'
+import UserAvatar from '@/components/UserAvatar.vue'
+import SendMessageModal from './SendMessageModal.vue'
+import BookmarkModal from './BookmarkModal.vue'
 import type { Database } from '@/types/supabase'
 
 interface Props {
@@ -88,16 +144,61 @@ const props = defineProps<Props>()
 
 const authStore = useAuthStore()
 const postStore = usePostStore()
+const bookmarkStore = useBookmarkStore()
 
 defineEmits<{
   like: [postId: string]
   comment: [postId: string]
 }>()
 
-// 检查是否为帖子作者
+// 响应式数据
+const showMessageModalVisible = ref(false)
+const showBookmarkModalVisible = ref(false)
+const isBookmarked = ref(false)
+
+// 计算属性
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAuthor = computed(() => {
   return authStore.user?.id === props.post.user_id
 })
+
+// 组件挂载时检查收藏状态
+onMounted(async () => {
+  if (isAuthenticated.value) {
+    isBookmarked.value = await bookmarkStore.checkIsBookmarked('post', props.post.id)
+  }
+})
+
+// 监听认证状态变化，重新检查收藏状态
+watch(isAuthenticated, async (newValue) => {
+  if (newValue) {
+    isBookmarked.value = await bookmarkStore.checkIsBookmarked('post', props.post.id)
+  } else {
+    isBookmarked.value = false
+  }
+})
+
+// 显示私信模态框
+const showMessageModal = () => {
+  showMessageModalVisible.value = true
+}
+
+// 处理私信发送成功
+const handleMessageSent = () => {
+  console.log('私信发送成功')
+}
+
+// 处理收藏
+const handleBookmark = () => {
+  showBookmarkModalVisible.value = true
+}
+
+// 处理收藏成功
+const handleBookmarked = async () => {
+  // 重新检查收藏状态以确保UI与数据库同步
+  isBookmarked.value = await bookmarkStore.checkIsBookmarked('post', props.post.id)
+  console.log('帖子收藏成功，状态已更新')
+}
 
 // 删除帖子
 const handleDeletePost = async () => {
@@ -174,18 +275,46 @@ const getExcerpt = (content: string) => {
   gap: 0.5rem;
 }
 
-.delete-btn {
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-btn {
   background: none;
-  border: none;
+  border: 1px solid #d9d9d9;
   cursor: pointer;
-  font-size: 1.2rem;
-  padding: 0.25rem;
-  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #666;
+  min-width: 80px;
+}
+
+.action-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.message-btn:hover {
+  border-color: #722ed1;
+  color: #722ed1;
+}
+
+.bookmark-btn.active {
+  background: #faad14;
+  border-color: #faad14;
+  color: white;
 }
 
 .delete-btn:hover {
   background: #fff1f0;
+  border-color: #ff4d4f;
   color: #ff4d4f;
 }
 
@@ -193,13 +322,6 @@ const getExcerpt = (content: string) => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-}
-
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
 }
 
 .user-details {
@@ -306,10 +428,14 @@ const getExcerpt = (content: string) => {
   background: none;
   border: 1px solid #d9d9d9;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   color: #666;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
 }
 
 .interaction-btn:hover {
@@ -326,5 +452,8 @@ const getExcerpt = (content: string) => {
 .view-count {
   color: #999;
   font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 </style>

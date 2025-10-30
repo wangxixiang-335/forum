@@ -29,17 +29,46 @@ export const useAuthStore = defineStore('auth', () => {
   // 初始化认证状态
   const initializeAuth = async () => {
     try {
+      console.log('开始初始化认证状态...')
+      
+      // 检查是否使用默认配置
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      if (!supabaseUrl || supabaseUrl.includes('default.supabase.co')) {
+        console.log('使用默认Supabase配置，创建模拟用户')
+        // 创建模拟用户用于开发
+        user.value = {
+          id: 'dev-user-id',
+          email: 'dev@example.com',
+          user_metadata: { username: 'devuser' }
+        } as any
+        
+        profile.value = {
+          id: 'dev-user-id',
+          username: 'devuser',
+          avatar_url: null,
+          level: 1,
+          experience_points: 0,
+          created_at: new Date().toISOString()
+        }
+        
+        console.log('开发模式认证初始化完成')
+        return
+      }
+      
       const { data: { session }, error } = await supabase.auth.getSession()
       
-      // 如果是默认配置导致的错误，跳过认证初始化
-      if (error && supabase.supabaseUrl.includes('default.supabase.co')) {
-        console.warn('使用默认Supabase配置，跳过认证初始化')
+      if (error) {
+        console.error('获取session失败:', error)
         return
       }
       
       if (session?.user) {
+        console.log('找到有效session，用户ID:', session.user.id)
         user.value = session.user
         await fetchProfile()
+        console.log('认证初始化完成')
+      } else {
+        console.log('未找到有效session')
       }
     } catch (error) {
       console.warn('认证初始化失败:', error)
@@ -48,7 +77,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   // 获取用户资料
   const fetchProfile = async () => {
-    if (!user.value) return
+    if (!user.value) {
+      console.warn('fetchProfile: 用户未登录')
+      return
+    }
     
     try {
       // 检查是否使用默认配置
@@ -59,11 +91,16 @@ export const useAuthStore = defineStore('auth', () => {
           supabaseUrl.includes('default.supabase.co') || 
           supabaseKey.includes('default')) {
         // 开发模式：使用模拟资料
-        const mockProfile = getMockProfile(user.value.id)
-        if (mockProfile) {
-          profile.value = mockProfile
-          return
+        console.log('使用开发模式模拟资料')
+        profile.value = {
+          id: user.value.id,
+          username: user.value.user_metadata?.username || 'user',
+          avatar_url: null,
+          level: 1,
+          experience_points: 25,
+          created_at: new Date().toISOString()
         }
+        return
       }
       
       // 真实环境：尝试获取资料，如果不存在则自动创建
@@ -73,7 +110,7 @@ export const useAuthStore = defineStore('auth', () => {
         profile.value = profileResult.profile
         console.log('✅ 用户资料获取/创建成功')
       } else {
-        console.warn('⚠️ 用户资料获取失败，使用默认资料')
+        console.warn('⚠️ 用户资料获取失败，使用默认资料:', profileResult.error)
         
         // 检查是否是权限问题（403/406错误）
         if (profileResult.error && (profileResult.error.includes('403') || profileResult.error.includes('406') || profileResult.error.includes('permission'))) {
@@ -91,18 +128,20 @@ export const useAuthStore = defineStore('auth', () => {
         }
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ 获取用户资料失败:', error)
       
-      // 出错时使用默认资料
+      // 出错时使用默认资料，确保不会因为资料加载失败而阻塞页面
       profile.value = {
         id: user.value.id,
-        username: user.value.email?.split('@')[0] || 'user',
+        username: user.value.email?.split('@')[0] || user.value.user_metadata?.username || 'user',
         avatar_url: null,
         level: 1,
         experience_points: 0,
         created_at: new Date().toISOString()
       }
+      
+      // 不抛出错误，让页面继续加载
     }
   }
 
@@ -290,6 +329,84 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 更新用户经验值
+  const updateExperience = async (points: number) => {
+    if (!profile.value) return
+    
+    try {
+      // 更新本地状态
+      profile.value.experience_points += points
+      
+      // 检查是否需要升级
+      const currentLevel = profile.value.level
+      
+      // 论坛等级经验表
+      const getLevelExpRequired = (level: number) => {
+        const expTable = [
+          0,    // Lv.1
+          50,   // Lv.2 - 新手
+          150,  // Lv.3 - 初级
+          300,  // Lv.4 - 中级
+          500,  // Lv.5 - 高级
+          800,  // Lv.6 - 资深
+          1200, // Lv.7 - 专家
+          1800, // Lv.8 - 大师
+          2500, // Lv.9 - 宗师
+          3500, // Lv.10 - 传奇
+          5000, // Lv.11 - 史诗
+          7000, // Lv.12 - 神话
+          10000 // Lv.13 - 至尊
+        ]
+        
+        if (level <= 1) return 0
+        if (level >= expTable.length) {
+          const baseExp = expTable[expTable.length - 1]
+          const extraLevels = level - expTable.length + 1
+          return baseExp + extraLevels * 2000
+        }
+        
+        return expTable[level - 1]
+      }
+      
+      const newLevelExp = getLevelExpRequired(currentLevel + 1)
+      
+      if (profile.value.experience_points >= newLevelExp) {
+        profile.value.level += 1
+        console.log(`🎉 恭喜升级！当前等级: Lv.${profile.value.level}`)
+      }
+      
+      // 同步到数据库
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      
+      if (!supabaseUrl || !supabaseKey || 
+          supabaseUrl.includes('default.supabase.co') || 
+          supabaseKey.includes('default')) {
+        // 开发模式下只更新本地状态
+        console.log('开发模式：经验值已更新到本地状态')
+        return
+      }
+      
+      // 生产环境下同步到数据库
+      await supabase
+        .from('profiles')
+        .update({
+          experience_points: profile.value.experience_points,
+          level: profile.value.level,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', profile.value.id)
+      
+    } catch (error) {
+      console.error('更新经验值失败:', error)
+      // 如果数据库更新失败，回滚本地状态
+      profile.value.experience_points -= points
+      if (profile.value.level > 1) {
+        profile.value.level -= 1
+      }
+    }
+  }
+
   // 登出
   const signOut = async () => {
     const { error } = await supabase.auth.signOut()
@@ -301,12 +418,22 @@ export const useAuthStore = defineStore('auth', () => {
 
   // 监听认证状态变化
   supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log('🔐 认证状态变化:', event, session?.user?.id)
+    
     if (event === 'SIGNED_IN' && session?.user) {
+      console.log('✅ 用户登录成功，设置用户信息')
       user.value = session.user
       await fetchProfile()
     } else if (event === 'SIGNED_OUT') {
+      console.log('👋 用户登出，清除用户信息')
       user.value = null
       profile.value = null
+    } else if (event === 'TOKEN_REFRESHED') {
+      console.log('🔄 令牌已刷新')
+      // 不要在这里刷新页面
+    } else if (event === 'USER_UPDATED') {
+      console.log('👤 用户信息已更新')
+      // 不要在这里刷新页面
     }
   })
 
@@ -321,6 +448,7 @@ export const useAuthStore = defineStore('auth', () => {
     signIn,
     signUp,
     signOut,
-    fetchProfile
+    fetchProfile,
+    updateExperience
   }
 })

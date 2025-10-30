@@ -2,8 +2,21 @@
   <div class="profile">
     <header class="header">
       <div class="container">
-        <RouterLink to="/" class="back-link">← 返回首页</RouterLink>
-        <h1>个人中心</h1>
+        <div class="header-nav">
+          <RouterLink to="/" class="back-link">← 返回首页</RouterLink>
+          <nav class="nav" v-if="!isViewingOtherUser">
+            <RouterLink to="/profile" class="nav-link active">个人中心</RouterLink>
+            <RouterLink to="/bookmarks" class="nav-link">
+              <i class="bi bi-bookmark"></i>
+              收藏
+            </RouterLink>
+            <RouterLink to="/messages" class="nav-link">
+              <i class="bi bi-envelope"></i>
+              消息
+            </RouterLink>
+          </nav>
+        </div>
+        <h1>{{ isViewingOtherUser ? '用户资料' : '个人中心' }}</h1>
       </div>
     </header>
 
@@ -15,15 +28,23 @@
           <!-- 用户信息卡片 -->
           <div class="profile-card">
             <div class="profile-header">
-              <img 
-                :src="profile.avatar_url || '/default-avatar.png'" 
-                :alt="profile.username"
-                class="avatar"
-              />
+              <div class="avatar-container" @click="!isViewingOtherUser && canChangeAvatar && (showAvatarSelector = true)">
+                <UserAvatar 
+                  :username="profile.username" 
+                  :avatar-id="profile.avatar_url"
+                  size="80px"
+                />
+                <div class="avatar-edit-hint" v-if="!isViewingOtherUser && canChangeAvatar">
+                  <span>点击更换</span>
+                </div>
+                <div class="avatar-locked" v-else-if="!isViewingOtherUser">
+                  <span>Lv.3 解锁</span>
+                </div>
+              </div>
               <div class="profile-info">
                 <h2 class="username" :class="getLevelClass(profile.level)">
                   {{ profile.username }}
-                  <span class="level-badge">Lv.{{ profile.level }}</span>
+                  <span class="level-badge">Lv.{{ profile.level }} {{ getLevelName(profile.level) }}</span>
                 </h2>
                 <p class="member-since">
                   注册时间：{{ formatDate(profile.created_at) }}
@@ -34,8 +55,11 @@
             <!-- 经验值进度条 -->
             <div class="experience-section">
               <div class="exp-info">
-                <span>经验值：{{ profile.experience_points }}</span>
-                <span>下一等级：{{ nextLevelExp - profile.experience_points > 0 ? (nextLevelExp - profile.experience_points) + ' EXP' : '已满' }}</span>
+                <span>经验值：{{ profile.experience_points || 0 }}</span>
+                <span>下一等级：{{ (nextLevelExp - (profile.experience_points || 0)) > 0 ? (nextLevelExp - (profile.experience_points || 0)) + ' EXP' : '已满' }}</span>
+                <button @click="debugExperience" class="debug-btn" title="调试经验值">
+                  调试
+                </button>
               </div>
               <div class="exp-progress">
                 <div 
@@ -43,6 +67,11 @@
                   :style="{ width: expProgress + '%' }"
                 ></div>
                 <span class="exp-text">{{ expProgress }}%</span>
+              </div>
+              <div class="exp-debug">
+                <button @click="addTestExperience" class="test-btn">
+                  测试+10经验
+                </button>
               </div>
             </div>
 
@@ -86,57 +115,148 @@
         </div>
       </div>
     </main>
+
+    <!-- 头像选择器模态框 -->
+    <div v-if="showAvatarSelector" class="modal-overlay" @click.self="showAvatarSelector = false">
+      <div class="modal-content">
+        <AvatarSelector 
+          @close="showAvatarSelector = false"
+          @select="handleAvatarSelect"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePostStore } from '@/stores/posts'
 import PostCard from '@/components/PostCard.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
+import AvatarSelector from '@/components/AvatarSelector.vue'
 import type { Database } from '@/types/supabase'
 
+const route = useRoute()
 const authStore = useAuthStore()
 const postStore = usePostStore()
 
+// 检查是否是查看其他用户的资料
+const isViewingOtherUser = computed(() => !!route.params.id)
+const targetUserId = computed(() => route.params.id as string)
+
 const loading = ref(true)
 const userPosts = ref<Database['public']['Tables']['posts']['Row'][]>([])
+const showAvatarSelector = ref(false)
 
-const profile = computed(() => authStore.profile)
+const profile = computed(() => {
+  if (isViewingOtherUser.value) {
+    return otherUserProfile.value
+  }
+  return authStore.profile
+})
+
+const otherUserProfile = ref<any>(null)
+
+// 论坛等级经验表
+const getLevelExpRequired = (level: number) => {
+  const expTable = [
+    0,    // Lv.1
+    50,   // Lv.2 - 新手
+    150,  // Lv.3 - 初级
+    300,  // Lv.4 - 中级
+    500,  // Lv.5 - 高级
+    800,  // Lv.6 - 资深
+    1200, // Lv.7 - 专家
+    1800, // Lv.8 - 大师
+    2500, // Lv.9 - 宗师
+    3500, // Lv.10 - 传奇
+    5000, // Lv.11 - 史诗
+    7000, // Lv.12 - 神话
+    10000 // Lv.13 - 至尊
+  ]
+  
+  if (level <= 1) return 0
+  if (level >= expTable.length) {
+    // 超过表格范围，使用递增公式
+    const baseExp = expTable[expTable.length - 1]
+    const extraLevels = level - expTable.length + 1
+    return baseExp + extraLevels * 2000
+  }
+  
+  return expTable[level - 1]
+}
 
 // 计算下一等级所需经验值
 const nextLevelExp = computed(() => {
-  if (!profile.value) return 0
-  return Math.floor(100 * Math.pow(profile.value.level + 1, 1.5))
+  if (!profile.value) return 50
+  const level = profile.value.level
+  return getLevelExpRequired(level + 1)
 })
 
 // 计算当前等级所需经验值
 const currentLevelExp = computed(() => {
   if (!profile.value) return 0
-  return Math.floor(100 * Math.pow(profile.value.level, 1.5))
+  const level = profile.value.level
+  return getLevelExpRequired(level)
 })
 
 // 计算经验值进度
 const expProgress = computed(() => {
   if (!profile.value) return 0
   
-  const currentExp = profile.value.experience_points
+  const currentExp = profile.value.experience_points || 0
   const currentLevelReq = currentLevelExp.value
   const nextLevelReq = nextLevelExp.value
+  
+  console.log('计算经验进度:', {
+    currentExp,
+    currentLevelReq,
+    nextLevelReq,
+    level: profile.value.level
+  })
   
   // 如果已经达到或超过下一等级要求，显示100%
   if (currentExp >= nextLevelReq) return 100
   
-  // 计算当前等级的进度
-  const expInCurrentLevel = currentExp - currentLevelReq
-  const expNeededForNextLevel = nextLevelReq - currentLevelReq
+  // 按照你的要求：经验值 / (经验值 + 到下一等级所需经验值)
+  const expNeededForNext = nextLevelReq - currentExp
+  const totalExpForProgress = currentExp + expNeededForNext
   
-  if (expNeededForNextLevel <= 0) return 0
+  console.log('进度计算:', {
+    expNeededForNext,
+    totalExpForProgress
+  })
   
-  const progress = Math.floor((expInCurrentLevel / expNeededForNextLevel) * 100)
+  if (totalExpForProgress <= 0) return 0
+  
+  // 新的进度计算：当前经验值 / (当前经验值 + 到下一等级所需经验值)
+  const progress = Math.floor((currentExp / totalExpForProgress) * 100)
+  
+  console.log('最终进度:', progress)
   
   // 确保进度在0-100之间
   return Math.max(0, Math.min(100, progress))
+})
+
+// 获取等级名称
+const getLevelName = (level: number) => {
+  const levelNames = [
+    '新手', '初级', '中级', '高级', '资深',
+    '专家', '大师', '宗师', '传奇', '史诗',
+    '神话', '至尊'
+  ]
+  
+  if (level <= 1) return '新手'
+  if (level > levelNames.length) return '至尊'
+  return levelNames[level - 1]
+}
+
+// 检查是否可以更换头像
+const canChangeAvatar = computed(() => {
+  const level = profile.value?.level || 1
+  return level >= 3
 })
 
 // 当前特权列表
@@ -147,8 +267,12 @@ const currentPrivileges = computed(() => {
   // 基础特权
   privileges.push({ id: 'basic', name: '发帖、评论、点赞', icon: '📝' })
 
-  if (level >= 4) {
-    privileges.push({ id: 'style', name: '特殊徽章显示', icon: '🎖️' })
+  if (level >= 3) {
+    privileges.push({ id: 'avatar', name: '自定义头像', icon: '🖼️' })
+  }
+
+  if (level >= 5) {
+    privileges.push({ id: 'signature', name: '个性签名', icon: '✍️' })
   }
 
   if (level >= 7) {
@@ -167,20 +291,59 @@ onMounted(async () => {
 })
 
 const loadUserData = async () => {
+  console.log('开始加载用户数据...')
+  loading.value = true
+  
   try {
-    if (!authStore.profile) {
-      await authStore.fetchProfile()
+    if (isViewingOtherUser.value) {
+      // 加载其他用户的资料
+      console.log('加载其他用户资料，ID:', targetUserId.value)
+      await loadOtherUserData()
+    } else {
+      // 加载当前用户的资料
+      // 确保用户已登录
+      if (!authStore.user) {
+        console.warn('用户未登录，无法加载个人资料')
+        loading.value = false
+        return
+      }
+      
+      console.log('用户已登录，ID:', authStore.user.id)
+      
+      // 加载用户资料，如果失败则使用默认值
+      if (!authStore.profile) {
+        console.log('用户资料为空，尝试获取...')
+        try {
+          console.log('调用fetchProfile...')
+          await authStore.fetchProfile()
+          console.log('fetchProfile完成')
+      } catch (profileError) {
+        console.warn('加载用户资料失败，使用默认值:', profileError)
+        // 不抛出错误，继续加载用户帖子
+      }
+    } else {
+      console.log('用户资料已存在:', authStore.profile)
     }
+    
+    // 加载用户帖子
+    console.log('开始加载用户帖子...')
     await loadUserPosts()
+    console.log('用户帖子加载完成')
   } catch (error) {
     console.error('加载用户数据失败:', error)
   } finally {
+    // 确保loading状态总是被设置为false
+    console.log('设置loading为false')
     loading.value = false
   }
 }
 
 const loadUserPosts = async () => {
-  if (!authStore.user) return
+  if (!authStore.user) {
+    console.warn('用户未登录，无法加载用户帖子')
+    userPosts.value = []
+    return
+  }
   
   try {
     const result = await postStore.fetchUserPosts(authStore.user.id)
@@ -204,6 +367,97 @@ const handleComment = (postId: string) => {
   console.log('评论帖子:', postId)
 }
 
+const handleAvatarSelect = async (avatar: any) => {
+  try {
+    // 先关闭模态框，避免DOM操作冲突
+    showAvatarSelector.value = false
+    
+    // 更新本地存储
+    localStorage.setItem('userAvatar', avatar.id)
+    
+    // 更新本地状态
+    if (profile.value) {
+      profile.value.avatar_url = avatar.id
+    }
+    
+    // 更新到数据库
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey || 
+        supabaseUrl.includes('default.supabase.co') || 
+        supabaseKey.includes('default')) {
+      // 开发模式下只更新本地状态
+      console.log('开发模式：头像已更新到本地状态')
+      return
+    }
+    
+    // 生产环境下同步到数据库
+    const { supabase } = await import('@/services/supabase')
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        avatar_url: avatar.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', authStore.user?.id)
+    
+    if (error) {
+      console.error('更新头像失败:', error)
+      // 回滚本地状态
+      const previousAvatar = localStorage.getItem('userAvatar')
+      if (profile.value) {
+        profile.value.avatar_url = previousAvatar || null
+      }
+    } else {
+      console.log('头像更新成功')
+    }
+  } catch (error) {
+    console.error('更新头像失败:', error)
+  }
+}
+
+// 加载其他用户数据
+const loadOtherUserData = async () => {
+  try {
+    const { supabase } = await import('@/services/supabase')
+    
+    // 获取用户资料
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', targetUserId.value)
+      .single()
+    
+    if (profileError) {
+      console.error('获取用户资料失败:', profileError)
+      loading.value = false
+      return
+    }
+    
+    otherUserProfile.value = profileData
+    console.log('其他用户资料加载成功:', profileData)
+    
+    // 获取用户帖子
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('user_id', targetUserId.value)
+      .order('created_at', { ascending: false })
+    
+    if (postsError) {
+      console.error('获取用户帖子失败:', postsError)
+    } else {
+      userPosts.value = postsData || []
+    }
+    
+  } catch (error) {
+    console.error('加载其他用户数据失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
 // 工具函数
 const getLevelClass = (level: number) => {
   if (level >= 10) return 'level-10-plus'
@@ -212,7 +466,39 @@ const getLevelClass = (level: number) => {
   return 'level-1-3'
 }
 
+const formatTime = (timestamp: string) => {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+  
+  return date.toLocaleDateString('zh-CN')
+}
+
+// 临时调试函数
+const debugExperience = () => {
+  if (profile.value) {
+    console.log('Profile data:', profile.value)
+    console.log('Experience points:', profile.value.experience_points)
+    console.log('Level:', profile.value.level)
+    console.log('Current level exp:', currentLevelExp.value)
+    console.log('Next level exp:', nextLevelExp.value)
+    console.log('Progress:', expProgress.value)
+  }
+}
+
+// 测试添加经验值
+const addTestExperience = async () => {
+  await authStore.updateExperience(10)
+  debugExperience()
+}
+
 const formatDate = (timestamp: string) => {
+  if (!timestamp) return '未知时间'
   return new Date(timestamp).toLocaleDateString('zh-CN')
 }
 </script>
@@ -235,6 +521,39 @@ const formatDate = (timestamp: string) => {
   padding: 0 20px;
 }
 
+.header-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: #666;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-link:hover {
+  background: rgba(24, 144, 255, 0.1);
+  color: #1890ff;
+}
+
+.nav-link.active {
+  background: #1890ff;
+  color: white;
+}
+
 .back-link {
   color: #1890ff;
   text-decoration: none;
@@ -246,7 +565,7 @@ const formatDate = (timestamp: string) => {
 }
 
 .header h1 {
-  margin: 1rem 0 0 0;
+  margin: 0;
   color: #333;
 }
 
@@ -275,12 +594,53 @@ const formatDate = (timestamp: string) => {
   margin-bottom: 2rem;
 }
 
-.avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid #f0f0f0;
+.avatar-container {
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.avatar-container:hover {
+  transform: scale(1.05);
+}
+
+.avatar-container:hover .avatar-edit-hint {
+  opacity: 1;
+}
+
+.avatar-edit-hint {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  text-align: center;
+  padding: 4px;
+  font-size: 0.75rem;
+  border-radius: 0 0 50% 50%;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
 }
 
 .profile-info {
@@ -416,5 +776,75 @@ const formatDate = (timestamp: string) => {
 
 .btn-primary:hover {
   background: #40a9ff;
+}
+
+.debug-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.debug-btn:hover {
+  background: #5a6268;
+}
+
+.test-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.test-btn:hover {
+  background: #218838;
+}
+
+.avatar-container {
+  position: relative;
+  cursor: pointer;
+}
+
+.avatar-container:not(.can-change) {
+  cursor: not-allowed;
+}
+
+.avatar-edit-hint {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  text-align: center;
+  padding: 4px;
+  font-size: 12px;
+  border-radius: 0 0 50% 50%;
+}
+
+.avatar-locked {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 0, 0, 0.7);
+  color: white;
+  text-align: center;
+  padding: 4px;
+  font-size: 12px;
+  border-radius: 0 0 50% 50%;
+}
+
+.exp-debug {
+  margin-top: 8px;
+  text-align: center;
 }
 </style>

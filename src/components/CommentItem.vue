@@ -2,10 +2,10 @@
   <div class="comment-item">
     <div class="comment-header">
       <div class="comment-author">
-        <img 
-          :src="comment.profiles?.avatar_url || '/default-avatar.png'" 
-          :alt="comment.profiles?.username"
-          class="avatar"
+        <UserAvatar 
+          :username="comment.profiles?.username || '匿名用户'" 
+          :avatar-id="comment.profiles?.avatar_url"
+          size="32px"
         />
         <div class="author-info">
           <span class="username" :class="getLevelClass(comment.profiles?.level || 1)">
@@ -54,6 +54,7 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePostStore } from '@/stores/posts'
+import UserAvatar from '@/components/UserAvatar.vue'
 import type { Database } from '@/types/supabase'
 
 interface Props {
@@ -164,12 +165,7 @@ const formatTime = (timestamp: string) => {
   gap: 0.75rem;
 }
 
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-}
+
 
 .author-info {
   display: flex;

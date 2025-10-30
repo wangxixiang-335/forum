@@ -317,18 +317,19 @@ const loadUserData = async () => {
           console.log('调用fetchProfile...')
           await authStore.fetchProfile()
           console.log('fetchProfile完成')
-      } catch (profileError) {
-        console.warn('加载用户资料失败，使用默认值:', profileError)
-        // 不抛出错误，继续加载用户帖子
+        } catch (profileError) {
+          console.warn('加载用户资料失败，使用默认值:', profileError)
+          // 不抛出错误，继续加载用户帖子
+        }
+      } else {
+        console.log('用户资料已存在:', authStore.profile)
       }
-    } else {
-      console.log('用户资料已存在:', authStore.profile)
+      
+      // 加载用户帖子
+      console.log('开始加载用户帖子...')
+      await loadUserPosts()
+      console.log('用户帖子加载完成')
     }
-    
-    // 加载用户帖子
-    console.log('开始加载用户帖子...')
-    await loadUserPosts()
-    console.log('用户帖子加载完成')
   } catch (error) {
     console.error('加载用户数据失败:', error)
   } finally {

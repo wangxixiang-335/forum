@@ -25,6 +25,15 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+        // 确保生成的文件有正确的扩展名
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
+      }
+    }
   }
 })

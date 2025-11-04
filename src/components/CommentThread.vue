@@ -24,6 +24,22 @@
             📌 置顶
           </div>
           <button 
+            v-if="canPinComment && !comment.is_pinned" 
+            class="action-btn pin-btn"
+            @click="handleTogglePin"
+            title="置顶评论"
+          >
+            📌
+          </button>
+          <button 
+            v-if="canPinComment && comment.is_pinned" 
+            class="action-btn unpin-btn"
+            @click="handleTogglePin"
+            title="取消置顶"
+          >
+            📍
+          </button>
+          <button 
             class="action-btn"
             :class="{ active: comment.user_has_liked }"
             @click="handleLike"
@@ -135,17 +151,22 @@ interface Props {
   }
   isReply?: boolean
   replyToUsername?: string
+  postId?: string
+  isPostAuthor?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isReply: false,
-  replyToUsername: ''
+  replyToUsername: '',
+  postId: '',
+  isPostAuthor: false
 })
 
 const emit = defineEmits<{
   like: [commentId: string]
   reply: [commentId: string, content: string]
   delete: [commentId: string]
+  pin: [commentId: string]
 }>()
 
 const authStore = useAuthStore()
@@ -162,6 +183,15 @@ const totalPages = ref(1)
 const currentUserProfile = computed(() => authStore.profile)
 const isAuthor = computed(() => {
   return authStore.user?.id === props.comment.user_id
+})
+
+// 检查是否有置顶权限
+const canPinComment = computed(() => {
+  const userLevel = authStore.profile?.level || 1
+  const isPostAuthor = props.isPostAuthor || false
+  
+  // 只有10级以上用户或帖子作者可以置顶评论
+  return userLevel >= 10 || isPostAuthor
 })
 
 const remainingRepliesCount = computed(() => {
@@ -226,6 +256,23 @@ const handleDeleteComment = () => {
     return
   }
   emit('delete', props.comment.id)
+}
+
+const handleTogglePin = async () => {
+  if (!props.postId) {
+    console.error('缺少postId，无法执行置顶操作')
+    return
+  }
+  
+  const result = await postStore.toggleCommentPin(props.comment.id, props.postId)
+  if (result.success) {
+    console.log('评论置顶状态切换成功:', result.data?.is_pinned ? '已置顶' : '已取消置顶')
+    // 通知父组件刷新评论列表
+    emit('pin', props.comment.id)
+  } else {
+    console.error('切换置顶状态失败:', result.error)
+    alert('操作失败: ' + result.error.message)
+  }
 }
 
 const handleReplyReply = (commentId: string, content: string) => {
@@ -396,6 +443,16 @@ onMounted(() => {
 .action-btn.delete-btn:hover {
   border-color: #ff4d4f;
   color: #ff4d4f;
+}
+
+.action-btn.pin-btn:hover {
+  border-color: #fa8c16;
+  color: #fa8c16;
+}
+
+.action-btn.unpin-btn:hover {
+  border-color: #fa8c16;
+  color: #fa8c16;
 }
 
 .pinned-badge {

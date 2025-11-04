@@ -14,6 +14,7 @@ interface Profile {
   avatar_url: string | null
   level: number
   experience_points: number
+  signature: string | null
   created_at: string
 }
 
@@ -98,6 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
           avatar_url: null,
           level: 1,
           experience_points: 25,
+          signature: null,
           created_at: new Date().toISOString()
         }
         return
@@ -124,6 +126,7 @@ export const useAuthStore = defineStore('auth', () => {
           avatar_url: null,
           level: 1,
           experience_points: 0,
+          signature: null,
           created_at: new Date().toISOString()
         }
       }
@@ -138,6 +141,7 @@ export const useAuthStore = defineStore('auth', () => {
         avatar_url: null,
         level: 1,
         experience_points: 0,
+        signature: null,
         created_at: new Date().toISOString()
       }
       
@@ -172,6 +176,7 @@ export const useAuthStore = defineStore('auth', () => {
           avatar_url: null,
           level: 1,
           experience_points: 0,
+          signature: null,
           created_at: new Date().toISOString()
         }
         
@@ -205,6 +210,7 @@ export const useAuthStore = defineStore('auth', () => {
             avatar_url: null,
             level: 1,
             experience_points: 0,
+            signature: null,
             created_at: new Date().toISOString()
           }
           
@@ -407,6 +413,49 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 更新个性签名
+  const updateSignature = async (signature: string) => {
+    if (!profile.value) return
+    
+    try {
+      // 更新本地状态
+      profile.value.signature = signature
+      
+      // 同步到数据库
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      
+      if (!supabaseUrl || !supabaseKey || 
+          supabaseUrl.includes('default.supabase.co') || 
+          supabaseKey.includes('default')) {
+        // 开发模式下只更新本地状态
+        console.log('开发模式：个性签名已更新到本地状态')
+        localStorage.setItem('userSignature', signature)
+        return
+      }
+      
+      // 生产环境下同步到数据库
+      await supabase
+        .from('profiles')
+        .update({
+          signature: signature,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', profile.value.id)
+      
+      localStorage.setItem('userSignature', signature)
+      
+    } catch (error) {
+      console.error('更新个性签名失败:', error)
+      // 如果数据库更新失败，回滚本地状态
+      if (profile.value) {
+        profile.value.signature = profile.value.signature || null
+      }
+    }
+  }
+
+  
+
   // 登出
   const signOut = async () => {
     const { error } = await supabase.auth.signOut()
@@ -449,6 +498,7 @@ export const useAuthStore = defineStore('auth', () => {
     signUp,
     signOut,
     fetchProfile,
-    updateExperience
+    updateExperience,
+    updateSignature
   }
 })

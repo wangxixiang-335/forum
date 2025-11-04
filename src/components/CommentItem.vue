@@ -21,6 +21,22 @@
           📌 置顶
         </div>
         <button 
+          v-if="canPinComment && !comment.is_pinned" 
+          class="pin-btn" 
+          @click="handleTogglePin"
+          title="置顶评论"
+        >
+          📌
+        </button>
+        <button 
+          v-if="canPinComment && comment.is_pinned" 
+          class="unpin-btn" 
+          @click="handleTogglePin"
+          title="取消置顶"
+        >
+          📍
+        </button>
+        <button 
           v-if="isAuthor" 
           class="delete-btn" 
           @click="handleDeleteComment"
@@ -66,6 +82,8 @@ interface Props {
     }
     user_has_liked?: boolean
   }
+  postId?: string
+  isPostAuthor?: boolean
 }
 
 const props = defineProps<Props>()
@@ -73,13 +91,24 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const postStore = usePostStore()
 
-defineEmits<{
+const emit = defineEmits<{
   like: [commentId: string]
+  pin: [commentId: string]
+  refresh: []
 }>()
 
 // 检查是否为评论作者
 const isAuthor = computed(() => {
   return authStore.user?.id === props.comment.user_id
+})
+
+// 检查是否有置顶权限
+const canPinComment = computed(() => {
+  const userLevel = authStore.profile?.level || 1
+  const isPostAuthor = props.isPostAuthor || false
+  
+  // 只有10级以上用户或帖子作者可以置顶评论
+  return userLevel >= 10 || isPostAuthor
 })
 
 // 删除评论
@@ -91,11 +120,29 @@ const handleDeleteComment = async () => {
   const result = await postStore.deleteComment(props.comment.id)
   if (result.success) {
     console.log('评论删除成功')
-    // 触发父组件刷新评论列表
-    location.reload()
+    // 通知父组件刷新评论列表，而不是刷新整个页面
+    emit('refresh')
   } else {
     console.error('删除评论失败:', result.error)
     alert('删除失败: ' + result.error)
+  }
+}
+
+// 切换评论置顶状态
+const handleTogglePin = async () => {
+  if (!props.postId) {
+    console.error('缺少postId，无法执行置顶操作')
+    return
+  }
+  
+  const result = await postStore.toggleCommentPin(props.comment.id, props.postId)
+  if (result.success) {
+    console.log('评论置顶状态切换成功:', result.data?.is_pinned ? '已置顶' : '已取消置顶')
+    // 通知父组件刷新评论列表，而不是刷新整个页面
+    emit('refresh')
+  } else {
+    console.error('切换置顶状态失败:', result.error)
+    alert('操作失败: ' + result.error.message)
   }
 }
 
@@ -157,6 +204,26 @@ const formatTime = (timestamp: string) => {
 .delete-btn:hover {
   background: #fff1f0;
   color: #ff4d4f;
+}
+
+.pin-btn, .unpin-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.pin-btn:hover {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
+.unpin-btn:hover {
+  background: #fff1f0;
+  color: #fa8c16;
 }
 
 .comment-author {

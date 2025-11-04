@@ -39,6 +39,7 @@
             />
             <button class="btn btn-primary search-btn" @click="handleQuickSearch">
               <i class="bi bi-search"></i>
+              搜索
             </button>
           </div>
         </div>
@@ -258,7 +259,7 @@ const getEmptyMessage = () => {
 <style scoped>
 .home {
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--background-color);
 }
 
 .header {

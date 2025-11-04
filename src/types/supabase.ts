@@ -8,6 +8,8 @@ export interface Database {
           avatar_url: string | null
           level: number
           experience_points: number
+          signature: string | null
+          theme_color: string
           created_at: string
         }
         Insert: {
@@ -16,6 +18,8 @@ export interface Database {
           avatar_url?: string | null
           level?: number
           experience_points?: number
+          signature?: string | null
+          theme_color?: string
           created_at?: string
         }
         Update: {
@@ -24,6 +28,8 @@ export interface Database {
           avatar_url?: string | null
           level?: number
           experience_points?: number
+          signature?: string | null
+          theme_color?: string
           created_at?: string
         }
       }

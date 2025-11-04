@@ -167,10 +167,25 @@ router.beforeEach(async (to, from, next) => {
 // 处理路由加载错误
 router.onError((error) => {
   console.error('路由加载错误:', error)
-  // 如果是动态导入错误，不要自动刷新页面，而是记录错误
+  
+  // 如果是动态导入错误
   if (error.message.includes('Failed to fetch dynamically imported module')) {
-    console.warn('检测到动态导入错误，但不自动刷新页面以避免循环刷新')
-    // 可以在这里显示用户友好的错误信息
+    console.warn('检测到动态导入错误，尝试重新加载页面')
+    
+    // 延迟一下再刷新，避免循环刷新
+    setTimeout(() => {
+      // 检查是否已经刷新过
+      const lastReload = sessionStorage.getItem('lastRouteErrorReload')
+      const now = Date.now()
+      
+      if (!lastReload || now - parseInt(lastReload) > 10000) { // 10秒内只刷新一次
+        sessionStorage.setItem('lastRouteErrorReload', now.toString())
+        console.log('重新加载页面以解决动态导入错误')
+        window.location.reload()
+      } else {
+        console.warn('最近已经刷新过页面，避免循环刷新')
+      }
+    }, 1000)
   }
 })
 

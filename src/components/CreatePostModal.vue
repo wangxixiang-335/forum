@@ -110,6 +110,8 @@ const handleSubmit = async () => {
   loading.value = true
   
   try {
+    console.log('开始提交帖子，内容长度:', form.value.content.length)
+    
     const result = await postStore.createPost(
       form.value.title.trim(),
       form.value.content.trim(),
@@ -117,6 +119,7 @@ const handleSubmit = async () => {
     )
     
     if (result.success) {
+      console.log('帖子创建成功')
       emit('created')
       // 重置表单
       form.value = {
@@ -125,12 +128,37 @@ const handleSubmit = async () => {
         tagsInput: '',
         tags: []
       }
+      
+      // 显示成功提示
+      alert('帖子发布成功！')
     } else {
-      alert(result.error?.message || '发布失败')
+      // 显示详细的错误信息
+      const errorMessage = result.error?.message || '发布失败'
+      const errorDetails = result.error?.details ? `
+
+错误详情: ${result.error.details}` : ''
+      const errorCode = result.error?.code ? `
+错误代码: ${result.error.code}` : ''
+      const contentLength = result.error?.contentLength ? `
+内容长度: ${result.error.contentLength}字符` : ''
+      
+      alert(`发布失败: ${errorMessage}${errorCode}${contentLength}${errorDetails}`)
     }
   } catch (error: any) {
     console.error('发布帖子失败:', error)
-    alert('发布失败，请重试')
+    
+    // 提供更详细的错误信息
+    let errorMessage = error.message || '发布失败，请重试'
+    
+    if (error.message?.includes('timeout') || error.message?.includes('超时')) {
+      errorMessage = `发布超时（${form.value.content.length}字符内容可能需要更长时间），请稍后检查帖子是否已创建成功`
+    } else if (error.code === 'PGRST301') {
+      errorMessage = '数据库连接失败，请检查网络连接'
+    } else if (error.code === 'PGRST116') {
+      errorMessage = '认证失败，请重新登录'
+    }
+    
+    alert(`发布失败: ${errorMessage}`)
   } finally {
     loading.value = false
   }

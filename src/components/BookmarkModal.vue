@@ -19,6 +19,7 @@
                 v-model="selectedFolder"
                 class="form-select"
                 required
+                :disabled="isLoadingFolders"
               >
                 <option value="">选择收藏夹...</option>
                 <option 
@@ -30,6 +31,10 @@
                 </option>
                 <option value="__new__">+ 创建新收藏夹</option>
               </select>
+              <div v-if="isLoadingFolders" class="loading-folders">
+                <span class="spinner-border spinner-border-sm me-2"></span>
+                加载收藏夹...
+              </div>
             </div>
           </div>
 
@@ -122,7 +127,8 @@ const selectedFolder = ref('')
 const newFolderName = ref('')
 const bookmarkNote = ref('')
 const isBookmarking = ref(false)
-const existingFolders = ref<string[]>([])
+const isLoadingFolders = ref(false)
+const existingFolders = ref<string[]>(['默认收藏夹']) // 提供默认值
 
 const canSubmit = computed(() => {
   if (selectedFolder.value === '__new__') {
@@ -184,11 +190,24 @@ const handleBookmark = async () => {
 }
 
 const loadExistingFolders = async () => {
+  isLoadingFolders.value = true
   try {
+    console.log('BookmarkModal: 开始加载收藏夹...')
     await fetchFolders()
     existingFolders.value = bookmarksStore.folders
+    console.log('BookmarkModal: 收藏夹加载完成:', existingFolders.value)
+    
+    // 如果没有获取到收藏夹，至少提供默认选项
+    if (existingFolders.value.length === 0) {
+      console.log('BookmarkModal: 没有找到收藏夹，使用默认收藏夹')
+      existingFolders.value = ['默认收藏夹']
+    }
   } catch (error) {
-    console.error('加载收藏夹失败:', error)
+    console.error('BookmarkModal: 加载收藏夹失败:', error)
+    // 出错时提供默认选项
+    existingFolders.value = ['默认收藏夹']
+  } finally {
+    isLoadingFolders.value = false
   }
 }
 
@@ -210,6 +229,21 @@ onMounted(() => {
   align-items: center;
   z-index: 1050;
   padding: 20px;
+}
+
+.folder-input-group {
+  position: relative;
+}
+
+.loading-folders {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #6c757d;
 }
 
 .bookmark-modal {

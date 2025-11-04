@@ -85,25 +85,41 @@ const checkConnection = async () => {
   lastError.value = null
 
   try {
-    // 测试认证连接
-    const { error } = await supabase.auth.getSession()
-    
-    if (error) {
-      throw error
+    // 首先检查配置是否有效
+    if (!isUrlValid.value || !isKeyValid.value) {
+      throw new Error('Supabase配置无效，请检查环境变量')
     }
 
-    // 测试数据库连接
-    const { error: dbError } = await supabase
-      .from('profiles')
-      .select('count')
-      .limit(1)
+    // 简单的ping测试 - 只测试网络可达性
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-    if (dbError) {
-      throw dbError
+    try {
+      const response = await fetch(`${supabaseUrl}/rest/v1/`, {
+        method: 'HEAD',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`
+        },
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      isConnected.value = true
+      console.log('✅ Supabase连接检查成功')
+
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId)
+      if (fetchError.name === 'AbortError') {
+        throw new Error('连接超时，请检查网络连接')
+      }
+      throw fetchError
     }
-
-    isConnected.value = true
-    console.log('✅ Supabase连接检查成功')
 
   } catch (error: any) {
     isConnected.value = false
@@ -136,7 +152,11 @@ supabase.auth.onAuthStateChange((event, session) => {
 
 onMounted(() => {
   console.log('🔗 连接状态组件已加载')
-  checkConnection()
+  
+  // 延迟1秒后检查连接，避免页面加载时的网络竞争
+  setTimeout(() => {
+    checkConnection()
+  }, 1000)
 })
 
 // 开发模式下显示连接状态

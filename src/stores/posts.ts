@@ -217,32 +217,160 @@ export const usePostStore = defineStore('posts', () => {
     }
 
     try {
-      const { data, error } = await withRetry(() =>
-        supabase
-          .from('posts')
-          .insert({
-            user_id: authStore.user.id,
-            title,
-            content,
-            tags,
-            like_count: 0,
-            comment_count: 0,
-            view_count: 0,
-            is_pinned: false
-          })
-          .select()
-          .single()
-      )
+      console.log('开始创建帖子:', { 
+        title: title.substring(0, 50) + '...', 
+        contentLength: content.length, 
+        tags,
+        userId: authStore.user.id
+      })
+      
+      // 检查网络连接状态
+      try {
+        // 先测试网络连接
+        const testConnection = await fetch('https://bkintupjzbcjiqvzricz.supabase.co/rest/v1/', {
+          method: 'HEAD',
+          signal: AbortSignal.timeout(5000) // 5秒超时
+        })
+        console.log('网络连接测试通过')
+      } catch (networkError) {
+        console.error('网络连接测试失败:', networkError)
+        throw new Error('网络连接异常，请检查网络连接后重试')
+      }
+      
+      // 优化超时时间设置：减少短内容的超时时间，增加长内容的容忍度
+      const timeoutDuration = content.length > 2000 ? 90000 : // 超长内容90秒
+                            content.length > 1000 ? 60000 : // 长内容60秒
+                            content.length > 500 ? 45000 : // 中等内容45秒
+                            content.length > 100 ? 30000 : // 短内容30秒
+                            20000 // 极短内容20秒
+      
+      console.log(`设置超时时间: ${timeoutDuration}ms (内容长度: ${content.length}字符)`)
+      
+      // 优化的超时机制，避免过早超时
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`发布超时（${content.length}字可能需要更长响应时间）`)), timeoutDuration)
+      })
 
-      if (error) throw error
+      // 准备插入数据
+      const insertData = {
+        user_id: authStore.user.id,
+        title,
+        content,
+        tags,
+        like_count: 0,
+        comment_count: 0,
+        view_count: 0,
+        is_pinned: false
+      }
+
+      console.log('插入数据准备完成，开始数据库操作...')
+      
+      // 优化的插入逻辑，添加更详细的进度日志
+      const insertPromise = (async () => {
+        try {
+          console.log('开始执行数据库插入...')
+          
+          // 使用更简单的插入方式，避免复杂的重试逻辑
+          const result = await supabase
+            .from('posts')
+            .insert(insertData)
+            .select()
+            .single()
+            
+          console.log('数据库插入完成')
+          return result
+        } catch (error) {
+          console.error('数据库插入过程中出错:', error)
+          throw error
+        }
+      })()
+
+      // 使用更智能的Promise.race实现
+      let result
+      try {
+        result = await Promise.race([insertPromise, timeoutPromise]) as any
+      } catch (raceError: any) {
+        // 如果是超时错误，提供更友好的错误信息
+        if (raceError.message?.includes('超时') || raceError.message?.includes('timeout')) {
+          console.warn('插入操作超时，但可能仍在后台执行')
+          
+          // 对于短内容，提供更快的重试建议
+          if (content.length <= 500) {
+            throw new Error(`发布超时（${content.length}字可能需要更长响应时间），请检查网络连接或稍后重试`)
+          } else {
+            throw new Error(`发布超时（${content.length}字内容较长，可能需要更长时间处理），请耐心等待或稍后检查帖子是否已创建成功`)
+          }
+        } else {
+          throw raceError
+        }
+      }
+
+      const { data, error } = result || {}
+
+      if (error) {
+        console.error('创建帖子数据库错误:', error)
+        
+        // 处理RLS策略错误
+        if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('row-level security')) {
+          return { 
+            success: false, 
+            error: { 
+              message: '权限不足，无法创建帖子。请检查数据库RLS策略配置。',
+              code: error.code,
+              details: error.message
+            }
+          }
+        }
+        
+        // 处理其他错误
+        throw error
+      }
+      
+      console.log('帖子创建成功:', { id: data?.id, title: data?.title?.substring(0, 30) + '...' })
       
       // 增加用户经验值（发帖获得10点经验）
-      await authStore.updateExperience(10)
+      try {
+        await authStore.updateExperience(10)
+        console.log('用户经验值更新成功')
+      } catch (expError) {
+        console.warn('更新经验值失败，但帖子已创建成功:', expError)
+      }
       
       return { success: true, data }
     } catch (error: any) {
       console.error('创建帖子失败:', error)
-      return { success: false, error: handleSupabaseError(error) }
+      
+      // 提供更详细和友好的错误信息
+      let errorMessage = error.message || '创建帖子失败'
+      
+      if (error.message?.includes('timeout') || error.message?.includes('超时')) {
+        // 根据内容长度提供不同的建议
+        if (content.length <= 500) {
+          errorMessage = `发布超时（${content.length}字可能需要更长响应时间），请检查网络连接或稍后重试`
+        } else {
+          errorMessage = `发布超时（${content.length}字内容较长，可能需要更长时间处理），请耐心等待或稍后检查帖子是否已创建成功`
+        }
+      } else if (error.code === 'PGRST301') {
+        errorMessage = '数据库连接失败，请检查网络连接'
+      } else if (error.code === 'PGRST116') {
+        errorMessage = '认证失败，请重新登录'
+      } else if (error.code === '23505') {
+        errorMessage = '帖子已存在或发生唯一性冲突'
+      } else if (error.code === '23503') {
+        errorMessage = '用户不存在或权限不足'
+      } else if (error.code === '23502') {
+        errorMessage = '数据不完整，请检查必填字段'
+      }
+      
+      return { 
+        success: false, 
+        error: { 
+          message: errorMessage,
+          code: error.code,
+          details: error.message,
+          contentLength: content.length
+        }
+      }
     }
   }
 
@@ -335,8 +463,21 @@ export const usePostStore = defineStore('posts', () => {
   const incrementViewCount = async (postId: string) => {
     try {
       await supabase.rpc('increment_view_count', { post_id: postId })
-    } catch (error) {
-      console.error('增加浏览量失败:', error)
+    } catch (error: any) {
+      // 如果函数不存在，使用直接更新方式
+      if (error?.code === 'PGRST202' || error?.message?.includes('function')) {
+        console.warn('increment_view_count函数不存在，使用直接更新方式')
+        const { error: updateError } = await supabase
+          .from('posts')
+          .update({ view_count: supabase.sql`view_count + 1` })
+          .eq('id', postId)
+        
+        if (updateError) {
+          console.error('直接更新浏览量失败:', updateError)
+        }
+      } else {
+        console.error('增加浏览量失败:', error)
+      }
     }
   }
 
@@ -548,6 +689,60 @@ export const usePostStore = defineStore('posts', () => {
     }
   }
 
+  // 置顶/取消置顶评论
+  const toggleCommentPin = async (commentId: string, postId: string) => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+    
+    if (!authStore.user) {
+      throw new Error('请先登录')
+    }
+
+    try {
+      // 首先获取评论信息，检查权限
+      const { data: commentData, error: commentError } = await supabase
+        .from('comments')
+        .select('is_pinned, user_id, post_id')
+        .eq('id', commentId)
+        .single()
+
+      if (commentError) throw commentError
+
+      // 检查权限：只有10级以上用户或帖子作者可以置顶评论
+      const userLevel = authStore.profile?.level || 1
+      const isPostAuthor = authStore.user.id === commentData.post_id
+      const hasPermission = userLevel >= 10 || isPostAuthor
+
+      if (!hasPermission) {
+        return { 
+          success: false, 
+          error: { message: '只有Lv.10以上用户或帖子作者才能置顶评论' }
+        }
+      }
+
+      // 切换置顶状态
+      const { error } = await withRetry(() =>
+        supabase
+          .from('comments')
+          .update({ 
+            is_pinned: !commentData.is_pinned,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', commentId)
+      )
+
+      if (error) throw error
+      
+      return { 
+        success: true, 
+        data: { is_pinned: !commentData.is_pinned }
+      }
+    } catch (error: any) {
+      console.error('切换评论置顶状态失败:', error)
+      return { success: false, error: handleSupabaseError(error) }
+    }
+  }
+
   return {
     posts,
     currentPost,
@@ -565,6 +760,7 @@ export const usePostStore = defineStore('posts', () => {
     createComment,
     deletePost,
     deleteComment,
+    toggleCommentPin,
     toggleLike,
     updateFilters,
     resetFilters,

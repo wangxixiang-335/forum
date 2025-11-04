@@ -46,6 +46,28 @@
                   {{ profile.username }}
                   <span class="level-badge">Lv.{{ profile.level }} {{ getLevelName(profile.level) }}</span>
                 </h2>
+                <div class="signature-section" v-if="!isViewingOtherUser">
+                  <div v-if="canEditSignature" class="signature-edit">
+                    <input 
+                      v-model="signatureInput"
+                      @blur="updateSignature"
+                      @keyup.enter="updateSignature"
+                      placeholder="编辑你的个性签名..."
+                      class="signature-input"
+                      maxlength="50"
+                    />
+                    <div class="signature-hint">按回车或点击其他地方保存</div>
+                  </div>
+                  <div v-else-if="profile.signature" class="signature-display">
+                    {{ profile.signature }}
+                  </div>
+                  <div v-else class="signature-locked">
+                    <span>个性签名功能暂不可用</span>
+                  </div>
+                </div>
+                <div v-else-if="profile.signature" class="signature-display">
+                  {{ profile.signature }}
+                </div>
                 <p class="member-since">
                   注册时间：{{ formatDate(profile.created_at) }}
                 </p>
@@ -74,6 +96,8 @@
                 </button>
               </div>
             </div>
+
+            
 
             <!-- 用户特权 -->
             <div class="privileges-section">
@@ -158,6 +182,7 @@ const profile = computed(() => {
 })
 
 const otherUserProfile = ref<any>(null)
+const signatureInput = ref('')
 
 // 论坛等级经验表
 const getLevelExpRequired = (level: number) => {
@@ -259,6 +284,14 @@ const canChangeAvatar = computed(() => {
   return level >= 3
 })
 
+// 检查是否可以编辑个性签名
+const canEditSignature = computed(() => {
+  const level = profile.value?.level || 1
+  return level >= 1  // 临时设置为1级，方便测试
+})
+
+
+
 // 当前特权列表
 const currentPrivileges = computed(() => {
   const level = profile.value?.level || 1
@@ -275,9 +308,7 @@ const currentPrivileges = computed(() => {
     privileges.push({ id: 'signature', name: '个性签名', icon: '✍️' })
   }
 
-  if (level >= 7) {
-    privileges.push({ id: 'color', name: '个性化色彩', icon: '🎨' })
-  }
+  
 
   if (level >= 10) {
     privileges.push({ id: 'mod', name: '评论置顶权限', icon: '⭐' })
@@ -288,6 +319,10 @@ const currentPrivileges = computed(() => {
 
 onMounted(async () => {
   await loadUserData()
+  // 初始化个性签名输入框
+  if (profile.value?.signature) {
+    signatureInput.value = profile.value.signature
+  }
 })
 
 const loadUserData = async () => {
@@ -502,6 +537,23 @@ const formatDate = (timestamp: string) => {
   if (!timestamp) return '未知时间'
   return new Date(timestamp).toLocaleDateString('zh-CN')
 }
+
+
+
+// 更新个性签名
+const updateSignature = async () => {
+  if (!canEditSignature.value || !authStore.user) return
+  
+  try {
+    // 使用store中的updateSignature方法
+    await authStore.updateSignature(signatureInput.value)
+    console.log('✅ 个性签名更新成功')
+  } catch (error) {
+    console.error('❌ 个性签名更新失败:', error)
+  }
+}
+
+
 </script>
 
 <style scoped>
@@ -848,4 +900,85 @@ const formatDate = (timestamp: string) => {
   margin-top: 8px;
   text-align: center;
 }
+
+.signature-section {
+  margin: 1rem 0;
+}
+
+.signature-edit {
+  position: relative;
+}
+
+.signature-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.signature-input:focus {
+  outline: none;
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.signature-hint {
+  font-size: 0.75rem;
+  color: #999;
+  margin-top: 0.25rem;
+}
+
+.signature-display {
+  font-style: italic;
+  color: #666;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.signature-locked {
+  color: #999;
+  font-style: italic;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.signature-section {
+  margin: 1rem 0;
+}
+
+.signature-edit {
+  position: relative;
+}
+
+.signature-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.signature-input:focus {
+  outline: none;
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.signature-hint {
+  font-size: 0.75rem;
+  color: #999;
+  margin-top: 0.25rem;
+}
+
+.signature-display {
+  font-style: italic;
+  color: #666;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+
 </style>

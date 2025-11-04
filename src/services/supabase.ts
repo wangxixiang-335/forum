@@ -24,6 +24,22 @@ export const supabase = createClient<Database>(
   global: {
     headers: {
       'X-Client-Info': 'forum-connector'
+    },
+    // 增加请求超时时间
+    fetch: (url, options = {}) => {
+      return fetch(url, {
+        ...options,
+        // 15秒超时
+        signal: AbortSignal.timeout(15000)
+      })
+    }
+  },
+  db: {
+    schema: 'public'
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
     }
   }
 })

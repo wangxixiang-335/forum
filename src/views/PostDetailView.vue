@@ -102,7 +102,10 @@
                 v-for="comment in comments" 
                 :key="comment.id" 
                 :comment="comment"
+                :post-id="postId"
+                :is-post-author="isPostAuthor"
                 @like="handleCommentLike"
+                @refresh="loadComments"
               />
             </div>
             <div v-else class="no-comments">
@@ -141,6 +144,9 @@ const commentInput = ref<HTMLTextAreaElement>()
 
 const post = computed(() => postStore.currentPost)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isPostAuthor = computed(() => {
+  return authStore.user?.id === post.value?.user_id
+})
 
 const comments = ref<Database['public']['Tables']['comments']['Row'][]>([])
 
@@ -168,6 +174,7 @@ const loadComments = async () => {
         profiles:user_id (username, avatar_url, level)
       `)
       .eq('post_id', postId)
+      .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: true })
     
     if (error) throw error

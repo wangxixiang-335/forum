@@ -34,6 +34,12 @@ export default defineConfig({
         entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
-    }
+    },
+    // 改善动态导入的处理
+    chunkSizeWarningLimit: 1000
+  },
+  // 改善开发服务器的动态导入处理
+  optimizeDeps: {
+    include: ['vue', 'vue-router', 'pinia']
   }
 })

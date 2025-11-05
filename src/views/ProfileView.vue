@@ -14,6 +14,10 @@
               <i class="bi bi-envelope"></i>
               消息
             </RouterLink>
+            <button @click="showAccountSettings = true" class="nav-link">
+              <i class="bi bi-gear"></i>
+              账号设置
+            </button>
           </nav>
         </div>
         <h1>{{ isViewingOtherUser ? '用户资料' : '个人中心' }}</h1>
@@ -149,6 +153,21 @@
         />
       </div>
     </div>
+
+    <!-- 账号设置模态框 -->
+    <div v-if="showAccountSettings" class="modal-overlay" @click.self="showAccountSettings = false">
+      <div class="modal-content">
+        <div class="account-settings-modal">
+          <div class="modal-header">
+            <h3>账号设置</h3>
+            <button @click="showAccountSettings = false" class="close-btn">×</button>
+          </div>
+          <div class="modal-body">
+            <AccountSettings />
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -160,6 +179,7 @@ import { usePostStore } from '@/stores/posts'
 import PostCard from '@/components/PostCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import AvatarSelector from '@/components/AvatarSelector.vue'
+import AccountSettings from '@/components/AccountSettings.vue'
 import type { Database } from '@/types/supabase'
 
 const route = useRoute()
@@ -173,6 +193,7 @@ const targetUserId = computed(() => route.params.id as string)
 const loading = ref(true)
 const userPosts = ref<Database['public']['Tables']['posts']['Row'][]>([])
 const showAvatarSelector = ref(false)
+const showAccountSettings = ref(false)
 
 const profile = computed(() => {
   if (isViewingOtherUser.value) {
@@ -980,5 +1001,68 @@ const updateSignature = async () => {
   font-size: 0.9rem;
 }
 
+/* 账号设置模态框样式 */
+.account-settings-modal {
+  background: white;
+  border-radius: 8px;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 1.5rem 0;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 1.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.25rem;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: #333;
+}
+
+.modal-body {
+  padding: 0 1.5rem 1.5rem;
+}
+
+/* 导航栏按钮样式 */
+.nav button.nav-link {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  color: #666;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav button.nav-link:hover {
+  background: rgba(24, 144, 255, 0.1);
+  color: #1890ff;
+}
 
 </style>

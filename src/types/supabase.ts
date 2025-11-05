@@ -44,6 +44,8 @@ export interface Database {
           comment_count: number
           view_count: number
           is_pinned: boolean
+          has_images: boolean
+          cover_image_url: string | null
           created_at: string
         }
         Insert: {
@@ -56,6 +58,8 @@ export interface Database {
           comment_count?: number
           view_count?: number
           is_pinned?: boolean
+          has_images?: boolean
+          cover_image_url?: string | null
           created_at?: string
         }
         Update: {
@@ -68,7 +72,56 @@ export interface Database {
           comment_count?: number
           view_count?: number
           is_pinned?: boolean
+          has_images?: boolean
+          cover_image_url?: string | null
           created_at?: string
+        }
+      }
+      post_images: {
+        Row: {
+          id: string
+          post_id: string
+          user_id: string
+          image_url: string
+          file_name: string
+          file_size: number
+          mime_type: string
+          width: number | null
+          height: number | null
+          alt_text: string | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          post_id: string
+          user_id: string
+          image_url: string
+          file_name: string
+          file_size: number
+          mime_type: string
+          width?: number | null
+          height?: number | null
+          alt_text?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          post_id?: string
+          user_id?: string
+          image_url?: string
+          file_name?: string
+          file_size?: number
+          mime_type?: string
+          width?: number | null
+          height?: number | null
+          alt_text?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
         }
       }
       comments: {

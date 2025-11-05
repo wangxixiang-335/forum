@@ -9,6 +9,7 @@ type Post = Database['public']['Tables']['posts']['Row'] & {
     avatar_url: string | null
     level: number
   }
+  post_images?: Database['public']['Tables']['post_images']['Row'][]
   user_has_liked?: boolean
 }
 
@@ -185,7 +186,8 @@ export const usePostStore = defineStore('posts', () => {
           .from('posts')
           .select(`
             *,
-            profiles:user_id (username, avatar_url, level)
+            profiles:user_id (username, avatar_url, level),
+            post_images!left(*)
           `)
           .eq('id', postId)
           .single()
@@ -207,8 +209,8 @@ export const usePostStore = defineStore('posts', () => {
     }
   }
 
-  // 创建帖子
-  const createPost = async (title: string, content: string, tags: string[] = []) => {
+  // 上传帖子图片
+  const uploadPostImage = async (postId: string, file: File) => {
     const { useAuthStore } = await import('@/stores/auth')
     const authStore = useAuthStore()
     
@@ -217,40 +219,92 @@ export const usePostStore = defineStore('posts', () => {
     }
 
     try {
+      // 生成唯一的文件名
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+      const filePath = `post-images/${postId}/${fileName}`
+
+      // 上传文件到Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('post-images')
+        .upload(filePath, file)
+
+      if (uploadError) {
+        console.error('图片上传失败:', uploadError)
+        throw new Error(`图片上传失败: ${uploadError.message}`)
+      }
+
+      // 获取公开URL
+      const { data: urlData } = supabase.storage
+        .from('post-images')
+        .getPublicUrl(filePath)
+
+      if (!urlData?.publicUrl) {
+        throw new Error('无法获取图片公开URL')
+      }
+
+      // 创建图片记录
+      const { data: imageData, error: imageError } = await supabase
+        .from('post_images')
+        .insert({
+          post_id: postId,
+          user_id: authStore.user.id,
+          image_url: urlData.publicUrl,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type
+        })
+        .select()
+        .single()
+
+      if (imageError) {
+        console.error('创建图片记录失败:', imageError)
+        
+        // 如果创建记录失败，尝试删除已上传的文件
+        try {
+          await supabase.storage
+            .from('post-images')
+            .remove([filePath])
+        } catch (deleteError) {
+          console.warn('删除已上传文件失败:', deleteError)
+        }
+        
+        throw imageError
+      }
+
+      return { success: true, data: imageData }
+    } catch (error: any) {
+      console.error('上传帖子图片失败:', error)
+      return { 
+        success: false, 
+        error: { 
+          message: error.message || '图片上传失败',
+          code: error.code
+        }
+      }
+    }
+  }
+
+  // 创建帖子（支持图片上传）
+  const createPost = async (title: string, content: string, tags: string[] = [], images: File[] = []) => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+    
+    if (!authStore.user) {
+      throw new Error('请先登录')
+    }
+
+    let uploadResults: any[] = []
+
+    try {
       console.log('开始创建帖子:', { 
         title: title.substring(0, 50) + '...', 
         contentLength: content.length, 
         tags,
+        imageCount: images.length,
         userId: authStore.user.id
       })
       
-      // 检查网络连接状态
-      try {
-        // 先测试网络连接
-        const testConnection = await fetch('https://bkintupjzbcjiqvzricz.supabase.co/rest/v1/', {
-          method: 'HEAD',
-          signal: AbortSignal.timeout(5000) // 5秒超时
-        })
-        console.log('网络连接测试通过')
-      } catch (networkError) {
-        console.error('网络连接测试失败:', networkError)
-        throw new Error('网络连接异常，请检查网络连接后重试')
-      }
-      
-      // 优化超时时间设置：减少短内容的超时时间，增加长内容的容忍度
-      const timeoutDuration = content.length > 2000 ? 90000 : // 超长内容90秒
-                            content.length > 1000 ? 60000 : // 长内容60秒
-                            content.length > 500 ? 45000 : // 中等内容45秒
-                            content.length > 100 ? 30000 : // 短内容30秒
-                            20000 // 极短内容20秒
-      
-      console.log(`设置超时时间: ${timeoutDuration}ms (内容长度: ${content.length}字符)`)
-      
-      // 优化的超时机制，避免过早超时
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(`发布超时（${content.length}字可能需要更长响应时间）`)), timeoutDuration)
-      })
-
       // 准备插入数据
       const insertData = {
         user_id: authStore.user.id,
@@ -260,73 +314,85 @@ export const usePostStore = defineStore('posts', () => {
         like_count: 0,
         comment_count: 0,
         view_count: 0,
-        is_pinned: false
+        is_pinned: false,
+        has_images: images.length > 0
       }
 
       console.log('插入数据准备完成，开始数据库操作...')
       
-      // 优化的插入逻辑，添加更详细的进度日志
-      const insertPromise = (async () => {
-        try {
-          console.log('开始执行数据库插入...')
-          
-          // 使用更简单的插入方式，避免复杂的重试逻辑
-          const result = await supabase
-            .from('posts')
-            .insert(insertData)
-            .select()
-            .single()
-            
-          console.log('数据库插入完成')
-          return result
-        } catch (error) {
-          console.error('数据库插入过程中出错:', error)
-          throw error
-        }
-      })()
+      // 创建帖子
+      const { data: postData, error: postError } = await supabase
+        .from('posts')
+        .insert(insertData)
+        .select()
+        .single()
 
-      // 使用更智能的Promise.race实现
-      let result
-      try {
-        result = await Promise.race([insertPromise, timeoutPromise]) as any
-      } catch (raceError: any) {
-        // 如果是超时错误，提供更友好的错误信息
-        if (raceError.message?.includes('超时') || raceError.message?.includes('timeout')) {
-          console.warn('插入操作超时，但可能仍在后台执行')
-          
-          // 对于短内容，提供更快的重试建议
-          if (content.length <= 500) {
-            throw new Error(`发布超时（${content.length}字可能需要更长响应时间），请检查网络连接或稍后重试`)
-          } else {
-            throw new Error(`发布超时（${content.length}字内容较长，可能需要更长时间处理），请耐心等待或稍后检查帖子是否已创建成功`)
-          }
-        } else {
-          throw raceError
-        }
-      }
-
-      const { data, error } = result || {}
-
-      if (error) {
-        console.error('创建帖子数据库错误:', error)
+      if (postError) {
+        console.error('创建帖子数据库错误:', postError)
         
         // 处理RLS策略错误
-        if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('row-level security')) {
+        if (postError.code === '42501' || postError.message?.includes('permission') || postError.message?.includes('row-level security')) {
           return { 
             success: false, 
             error: { 
               message: '权限不足，无法创建帖子。请检查数据库RLS策略配置。',
-              code: error.code,
-              details: error.message
+              code: postError.code,
+              details: postError.message
             }
           }
         }
         
         // 处理其他错误
-        throw error
+        throw postError
       }
       
-      console.log('帖子创建成功:', { id: data?.id, title: data?.title?.substring(0, 30) + '...' })
+      console.log('帖子创建成功:', { id: postData?.id, title: postData?.title?.substring(0, 30) + '...' })
+
+      // 如果有图片，上传图片
+      if (images.length > 0 && postData) {
+        console.log('开始上传图片，数量:', images.length)
+        
+        uploadResults = await Promise.allSettled(
+          images.map(file => uploadPostImage(postData.id, file))
+        )
+
+        console.log('图片上传结果:', uploadResults)
+
+        // 检查上传结果
+        const successfulUploads = uploadResults.filter(result => 
+          result.status === 'fulfilled' && result.value && result.value.success
+        )
+        
+        const failedUploads = uploadResults.filter(result => 
+          result.status === 'rejected' || (result.status === 'fulfilled' && result.value && !result.value.success)
+        )
+
+        if (failedUploads.length > 0) {
+          console.warn('部分图片上传失败:', failedUploads.length)
+          
+          // 如果有图片上传失败，但帖子已创建成功，返回警告信息
+          if (successfulUploads.length > 0) {
+            console.log('部分图片上传成功:', successfulUploads.length)
+          }
+        }
+
+        // 设置第一张图片为封面图片
+        if (successfulUploads.length > 0) {
+          const firstImage = successfulUploads[0] as PromiseFulfilledResult<any>
+          try {
+            await supabase
+              .from('posts')
+              .update({ 
+                cover_image_url: firstImage.value.data.image_url,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', postData.id)
+            console.log('封面图片设置成功')
+          } catch (coverError) {
+            console.warn('设置封面图片失败:', coverError)
+          }
+        }
+      }
       
       // 增加用户经验值（发帖获得10点经验）
       try {
@@ -336,7 +402,15 @@ export const usePostStore = defineStore('posts', () => {
         console.warn('更新经验值失败，但帖子已创建成功:', expError)
       }
       
-      return { success: true, data }
+      return { 
+        success: true, 
+        data: postData,
+        imageUploads: {
+          total: images.length,
+          successful: uploadResults ? uploadResults.filter(r => r.status === 'fulfilled' && r.value && r.value.success).length : 0,
+          failed: uploadResults ? uploadResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value && !r.value.success)).length : 0
+        }
+      }
     } catch (error: any) {
       console.error('创建帖子失败:', error)
       
@@ -344,12 +418,7 @@ export const usePostStore = defineStore('posts', () => {
       let errorMessage = error.message || '创建帖子失败'
       
       if (error.message?.includes('timeout') || error.message?.includes('超时')) {
-        // 根据内容长度提供不同的建议
-        if (content.length <= 500) {
-          errorMessage = `发布超时（${content.length}字可能需要更长响应时间），请检查网络连接或稍后重试`
-        } else {
-          errorMessage = `发布超时（${content.length}字内容较长，可能需要更长时间处理），请耐心等待或稍后检查帖子是否已创建成功`
-        }
+        errorMessage = `发布超时（${content.length}字），请检查网络连接或稍后重试`
       } else if (error.code === 'PGRST301') {
         errorMessage = '数据库连接失败，请检查网络连接'
       } else if (error.code === 'PGRST116') {

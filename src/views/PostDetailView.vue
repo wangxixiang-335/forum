@@ -40,6 +40,25 @@
             <div class="post-body">
               <div class="content" v-html="formatContent(post.content)"></div>
               
+              <!-- 帖子图片 -->
+              <div v-if="post.post_images && post.post_images.length > 0" class="post-images">
+                <h4>帖子图片 ({{ post.post_images.length }})</h4>
+                <div class="images-grid">
+                  <div 
+                    v-for="image in post.post_images" 
+                    :key="image.id" 
+                    class="image-item"
+                  >
+                    <img 
+                      :src="image.image_url" 
+                      :alt="image.alt_text || '帖子图片'"
+                      @click="openImage(image.image_url)"
+                      class="post-image"
+                    />
+                  </div>
+                </div>
+              </div>
+              
               <div v-if="post.tags && post.tags.length > 0" class="post-tags">
                 <span 
                   v-for="tag in post.tags" 
@@ -246,6 +265,10 @@ const formatContent = (content: string) => {
     .replace(/\n/g, '<br>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
+}
+
+const openImage = (imageUrl: string) => {
+  window.open(imageUrl, '_blank')
 }
 </script>
 
@@ -500,5 +523,49 @@ const formatContent = (content: string) => {
   color: #666;
   background: #fafafa;
   border-radius: 4px;
+}
+
+/* 帖子图片样式 */
+.post-images {
+  margin: 1.5rem 0;
+  padding: 1rem 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+.post-images h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.image-item {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.image-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.post-image {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.post-image:hover {
+  opacity: 0.9;
 }
 </style>

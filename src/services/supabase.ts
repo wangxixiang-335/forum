@@ -4,45 +4,44 @@ import type { Database } from '@/types/supabase'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// 检查是否使用默认配置
-const isDefaultConfig = !supabaseUrl || supabaseUrl.includes('default.supabase.co')
+// 检查环境变量是否配置
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('⚠️ Supabase环境变量未配置，请检查.env文件')
+}
 
-// 开发模式下提供默认值，避免应用崩溃
-const defaultUrl = 'https://default.supabase.co'
-const defaultKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlZmF1bHQiLCJpYXQiOjE2ODAwMDAwMDAsImV4cCI6MTk5NTU3NjAwMH0.default'
-
-// 创建Supabase客户端，添加开发模式支持
+// 创建Supabase客户端，优化超时设置
 export const supabase = createClient<Database>(
-  supabaseUrl || defaultUrl,
-  supabaseAnonKey || defaultKey,
+  supabaseUrl || 'https://bkintupjzbcjiqvzricz.supabase.co',
+  supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJraW50dXBqemJjamlxdnpyaWN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MDYzNDEsImV4cCI6MjA3NzE4MjM0MX0.ZA6l95LSZ_x2DFfJGCcXMXLlRg9nOV7kNqEJUC7OG8o',
   {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  },
-  global: {
-    headers: {
-      'X-Client-Info': 'forum-connector'
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
     },
-    // 增加请求超时时间
-    fetch: (url, options = {}) => {
-      return fetch(url, {
-        ...options,
-        // 15秒超时
-        signal: AbortSignal.timeout(15000)
-      })
-    }
-  },
-  db: {
-    schema: 'public'
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
+    global: {
+      headers: {
+        'X-Client-Info': 'forum-connector'
+      },
+      // 优化超时时间：短内容5秒，长内容10秒
+      fetch: (url, options = {}) => {
+        const timeout = options.body && options.body.toString().length > 1000 ? 10000 : 5000
+        return fetch(url, {
+          ...options,
+          signal: AbortSignal.timeout(timeout)
+        })
+      }
+    },
+    db: {
+      schema: 'public'
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
     }
   }
-})
+)
 
 // 请求拦截器 - 添加认证token
 supabase.realtime.setAuth = (token: string) => {

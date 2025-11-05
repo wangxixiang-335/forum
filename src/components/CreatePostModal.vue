@@ -47,6 +47,17 @@
             </span>
           </div>
         </div>
+
+        <!-- 图片上传组件 -->
+        <div class="form-group">
+          <label>图片上传（可选，最多10张）</label>
+          <ImageUpload
+            v-model="form.images"
+            :max-files="10"
+            :max-size="5"
+            @upload-progress="handleUploadProgress"
+          />
+        </div>
         
         <div class="form-actions">
           <button type="button" @click="$emit('close')" class="btn-secondary">
@@ -64,6 +75,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { usePostStore } from '@/stores/posts'
+import ImageUpload from './ImageUpload.vue'
 
 interface Emits {
   (e: 'close'): void
@@ -78,10 +90,12 @@ const form = ref({
   title: '',
   content: '',
   tagsInput: '',
-  tags: [] as string[]
+  tags: [] as string[],
+  images: [] as File[]
 })
 
 const loading = ref(false)
+const uploadProgress = ref(0)
 
 // 监听标签输入变化
 watch(() => form.value.tagsInput, (newValue) => {
@@ -104,33 +118,63 @@ const isFormValid = computed(() => {
          form.value.content.length <= 5000
 })
 
+// 处理上传进度
+const handleUploadProgress = (progress: number) => {
+  uploadProgress.value = progress
+}
+
 const handleSubmit = async () => {
   if (!isFormValid.value) return
   
   loading.value = true
   
   try {
-    console.log('开始提交帖子，内容长度:', form.value.content.length)
+    console.log('开始提交帖子，内容长度:', form.value.content.length, '图片数量:', form.value.images.length)
+    
+    // 提取File对象数组
+    const imageFiles = form.value.images.map((imageData: any) => {
+      // 确保正确处理ImageData结构
+      if (imageData && imageData.file && imageData.file instanceof File) {
+        return imageData.file
+      }
+      console.warn('无效的图片数据:', imageData)
+      return null
+    }).filter(Boolean) as File[]
     
     const result = await postStore.createPost(
       form.value.title.trim(),
       form.value.content.trim(),
-      form.value.tags
+      form.value.tags,
+      imageFiles
     )
     
     if (result.success) {
       console.log('帖子创建成功')
+      
+      // 显示上传结果信息
+      let successMessage = '帖子发布成功！'
+      if (result.imageUploads && result.imageUploads.total > 0) {
+        if (result.imageUploads.failed > 0) {
+          successMessage = `帖子发布成功！${result.imageUploads.successful}张图片上传成功，${result.imageUploads.failed}张图片上传失败。`
+        } else {
+          successMessage = `帖子发布成功！${result.imageUploads.successful}张图片上传成功。`
+        }
+      }
+      
       emit('created')
+      
       // 重置表单
       form.value = {
         title: '',
         content: '',
         tagsInput: '',
-        tags: []
+        tags: [],
+        images: []
       }
+      uploadProgress.value = 0
       
       // 显示成功提示
-      alert('帖子发布成功！')
+      alert(successMessage)
     } else {
       // 显示详细的错误信息
       const errorMessage = result.error?.message || '发布失败'

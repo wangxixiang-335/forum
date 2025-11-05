@@ -1,14 +1,21 @@
 <template>
   <div v-if="showStatus" class="connection-status" :class="statusClass">
     <div class="status-content">
-      <span class="status-icon">{{ statusIcon }}</span>
-      <span class="status-text">{{ statusText }}</span>
-      <button v-if="!isConnected" @click="retryConnection" class="retry-btn">
-        重试连接
-      </button>
-      <button @click="showDetails = !showDetails" class="details-btn">
-        {{ showDetails ? '隐藏详情' : '显示详情' }}
-      </button>
+      <div class="status-info">
+        <span class="status-icon">{{ statusIcon }}</span>
+        <span class="status-text">{{ statusText }}</span>
+      </div>
+      <div class="status-actions">
+        <button v-if="!isConnected" @click="retryConnection" class="retry-btn">
+          重试
+        </button>
+        <button @click="showDetails = !showDetails" class="details-btn">
+          {{ showDetails ? '隐藏' : '详情' }}
+        </button>
+        <button @click="showStatus = false" class="close-btn" title="关闭">
+          ×
+        </button>
+      </div>
     </div>
     
     <div v-if="showDetails" class="details-panel">
@@ -128,11 +135,18 @@ const checkConnection = async () => {
   } finally {
     checking.value = false
     
-    // 如果连接成功，3秒后自动隐藏状态栏
+    // 如果连接成功，2秒后自动隐藏状态栏
     if (isConnected.value) {
       setTimeout(() => {
         showStatus.value = false
-      }, 3000)
+      }, 2000)
+    }
+    
+    // 如果连接失败，5秒后自动隐藏状态栏
+    if (!isConnected.value && !checking.value) {
+      setTimeout(() => {
+        showStatus.value = false
+      }, 5000)
     }
   }
 }
@@ -174,14 +188,19 @@ if (import.meta.env.DEV) {
 <style scoped>
 .connection-status {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  padding: 0.75rem 1rem;
+  top: 60px; /* 调整位置，避免遮挡顶部导航栏 */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999; /* 降低z-index，避免遮挡重要元素 */
+  padding: 0.75rem 1.5rem;
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.3s ease;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 90%;
+  width: auto;
+  min-width: 300px;
 }
 
 .connection-status.connected {
@@ -206,33 +225,54 @@ if (import.meta.env.DEV) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 1200px;
-  margin: 0 auto;
+  gap: 1rem;
+}
+
+.status-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .status-icon {
   font-size: 1.2rem;
-  margin-right: 0.5rem;
 }
 
 .status-text {
-  flex: 1;
-  margin-right: 1rem;
+  font-weight: 500;
 }
 
-.retry-btn, .details-btn {
+.retry-btn, .details-btn, .close-btn {
   background: rgba(255, 255, 255, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.5);
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
   font-size: 0.75rem;
   cursor: pointer;
-  margin-left: 0.5rem;
   transition: all 0.2s;
+  min-width: 50px;
 }
 
-.retry-btn:hover, .details-btn:hover {
+.retry-btn:hover, .details-btn:hover, .close-btn:hover {
   background: rgba(255, 255, 255, 0.5);
+}
+
+.close-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: bold;
 }
 
 .details-panel {
@@ -271,15 +311,28 @@ if (import.meta.env.DEV) {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .connection-status {
+    top: 80px; /* 在移动设备上位置更低 */
+    left: 5%;
+    right: 5%;
+    transform: none;
+    min-width: auto;
+    max-width: 90%;
+  }
+  
   .status-content {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
   }
   
-  .retry-btn, .details-btn {
-    margin-left: 0;
-    margin-right: 0.5rem;
+  .status-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .retry-btn, .details-btn, .close-btn {
+    margin: 0 0.25rem;
   }
   
   .detail-item {

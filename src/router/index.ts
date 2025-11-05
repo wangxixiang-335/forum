@@ -134,6 +134,14 @@ router.beforeEach(async (to, from, next) => {
         }
       } catch (storeError) {
         console.error('Auth store操作失败:', storeError)
+        
+        // 如果是动态导入错误，不进行重定向，避免循环
+        if (storeError.message && storeError.message.includes('Failed to fetch dynamically imported module')) {
+          console.warn('动态导入错误，允许访问页面')
+          next()
+          return
+        }
+        
         console.log('认证检查失败，重定向到登录页面')
         next('/login')
         return
@@ -170,7 +178,17 @@ router.onError((error) => {
   
   // 如果是动态导入错误
   if (error.message.includes('Failed to fetch dynamically imported module')) {
-    console.warn('检测到动态导入错误，尝试重新加载页面')
+    console.warn('检测到动态导入错误，检查是否需要刷新页面')
+    
+    // 检查是否是认证相关的错误
+    const isAuthError = error.message.includes('auth') || 
+                       error.message.includes('stores/auth') ||
+                       error.message.includes('ProfileView')
+    
+    if (isAuthError) {
+      console.log('认证相关错误，不刷新页面，让路由守卫处理重定向')
+      return
+    }
     
     // 延迟一下再刷新，避免循环刷新
     setTimeout(() => {

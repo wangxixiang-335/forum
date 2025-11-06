@@ -175,7 +175,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import PostCard from '@/components/PostCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import AvatarSelector from '@/components/AvatarSelector.vue'
@@ -184,7 +184,7 @@ import type { Database } from '@/types/supabase'
 
 const route = useRoute()
 const authStore = useAuthStore()
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 
 // 检查是否是查看其他用户的资料
 const isViewingOtherUser = computed(() => !!route.params.id)
@@ -403,7 +403,7 @@ const loadUserPosts = async () => {
   }
   
   try {
-    const result = await postStore.fetchUserPosts(authStore.user.id)
+    const result = await postsStore.fetchUserPosts(authStore.user.id)
     if (result.success) {
       userPosts.value = result.data || []
     } else {

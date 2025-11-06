@@ -135,7 +135,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import UserAvatar from '@/components/UserAvatar.vue'
 import type { Database } from '@/types/supabase'
 
@@ -170,7 +170,7 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 
 const showReplyBox = ref(false)
 const replyContent = ref('')
@@ -214,7 +214,7 @@ const submitReply = async () => {
   if (!replyContent.value.trim()) return
   
   try {
-    const result = await postStore.createComment(
+    const result = await postsStore.createComment(
       props.comment.post_id,
       replyContent.value.trim(),
       props.comment.id
@@ -264,7 +264,7 @@ const handleTogglePin = async () => {
     return
   }
   
-  const result = await postStore.toggleCommentPin(props.comment.id, props.postId)
+  const result = await postsStore.toggleCommentPin(props.comment.id, props.postId)
   if (result.success) {
     console.log('评论置顶状态切换成功:', result.data?.is_pinned ? '已置顶' : '已取消置顶')
     // 通知父组件刷新评论列表
@@ -286,7 +286,7 @@ const loadReplies = async () => {
   loadingReplies.value = true
   try {
     // 这里需要实现获取回复的逻辑
-    // const result = await postStore.fetchCommentReplies(props.comment.id, currentPage.value)
+    // const result = await postsStore.fetchCommentReplies(props.comment.id, currentPage.value)
     // if (result.success) {
     //   replies.value = [...replies.value, ...result.data]
     //   hasMoreReplies.value = result.hasMore

@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import ImageUpload from './ImageUpload.vue'
 
 interface Emits {
@@ -84,7 +84,7 @@ interface Emits {
 
 const emit = defineEmits<Emits>()
 
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 
 const form = ref({
   title: '',
@@ -131,6 +131,11 @@ const handleSubmit = async () => {
   try {
     console.log('开始提交帖子，内容长度:', form.value.content.length, '图片数量:', form.value.images.length)
     
+    // 对于长内容，显示特殊提示
+    if (form.value.content.length > 500) {
+      console.log('检测到长内容帖子，优化处理逻辑...')
+    }
+    
     // 提取File对象数组
     const imageFiles = form.value.images.map((imageData: any) => {
       // 确保正确处理ImageData结构
@@ -141,14 +146,20 @@ const handleSubmit = async () => {
       return null
     }).filter(Boolean) as File[]
     
-    const result = await postStore.createPost(
+    // 优化超时设置 - 对于所有内容统一使用较长超时
+    const contentLength = form.value.content.length
+    
+    console.log(`开始创建帖子，内容长度: ${contentLength}字符`)
+    
+    // 移除超时限制，使用postsStore中的智能超时配置
+    const result = await postsStore.createPost(
       form.value.title.trim(),
       form.value.content.trim(),
       form.value.tags,
       imageFiles
     )
     
-    if (result.success) {
+    if (result && result.success) {
       console.log('帖子创建成功')
       
       // 显示上传结果信息
@@ -175,7 +186,7 @@ const handleSubmit = async () => {
       
       // 显示成功提示
       alert(successMessage)
-    } else {
+    } else if (result && !result.success) {
       // 显示详细的错误信息
       const errorMessage = result.error?.message || '发布失败'
       const errorDetails = result.error?.details ? `
@@ -195,7 +206,7 @@ const handleSubmit = async () => {
     let errorMessage = error.message || '发布失败，请重试'
     
     if (error.message?.includes('timeout') || error.message?.includes('超时')) {
-      errorMessage = `发布超时（${form.value.content.length}字符内容可能需要更长时间），请稍后检查帖子是否已创建成功`
+      errorMessage = `发布超时（${form.value.content.length}字符内容可能需要更长时间），请检查网络连接或稍后重试。如果帖子已创建成功，可能会显示在列表中。`
     } else if (error.code === 'PGRST301') {
       errorMessage = '数据库连接失败，请检查网络连接'
     } else if (error.code === 'PGRST116') {

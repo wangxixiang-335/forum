@@ -122,7 +122,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import { useBookmarkStore } from '@/stores/bookmarks'
 import UserAvatar from '@/components/UserAvatar.vue'
 import SendMessageModal from './SendMessageModal.vue'
@@ -143,7 +143,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const authStore = useAuthStore()
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 const bookmarkStore = useBookmarkStore()
 
 defineEmits<{
@@ -206,7 +206,7 @@ const handleDeletePost = async () => {
     return
   }
   
-  const result = await postStore.deletePost(props.post.id)
+  const result = await postsStore.deletePost(props.post.id)
   if (result.success) {
     console.log('帖子删除成功')
   } else {

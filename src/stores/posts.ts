@@ -20,7 +20,7 @@ interface PostFilters {
   authorId?: string
 }
 
-export const usePostStore = defineStore('posts', () => {
+export const usePostsStore = defineStore('posts', () => {
   const posts = ref<Post[]>([])
   const currentPost = ref<Post | null>(null)
   const isLoading = ref(false)
@@ -320,32 +320,44 @@ export const usePostStore = defineStore('posts', () => {
 
       console.log('插入数据准备完成，开始数据库操作...')
       
-      // 创建帖子
-      const { data: postData, error: postError } = await supabase
-        .from('posts')
-        .insert(insertData)
-        .select()
-        .single()
-
-      if (postError) {
-        console.error('创建帖子数据库错误:', postError)
-        
-        // 处理RLS策略错误
-        if (postError.code === '42501' || postError.message?.includes('permission') || postError.message?.includes('row-level security')) {
-          return { 
-            success: false, 
-            error: { 
-              message: '权限不足，无法创建帖子。请检查数据库RLS策略配置。',
-              code: postError.code,
-              details: postError.message
-            }
-          }
-        }
-        
-        // 处理其他错误
-        throw postError
+      // 创建帖子 - 简化插入操作，避免触发器影响
+      console.log('开始数据库插入操作，内容长度:', content.length)
+      
+      // 使用异步方式插入，先插入数据，再查询结果
+      const { data: insertResult, error: insertError } = await withRetry(() =>
+        supabase
+          .from('posts')
+          .insert(insertData)
+          .select('id')
+          .single()
+      )
+      
+      if (insertError) {
+        console.error('插入帖子数据失败:', insertError)
+        throw insertError
       }
       
+      // 使用单独的查询获取完整的帖子数据
+      console.log('插入成功，获取完整帖子数据...')
+      const { data: postData, error: selectError } = await withRetry(() =>
+        supabase
+          .from('posts')
+          .select('*')
+          .eq('id', insertResult.id)
+          .single()
+      )
+      
+      if (selectError) {
+        console.error('查询帖子数据失败:', selectError)
+        // 即使查询失败，如果插入成功，仍然返回成功
+        return { 
+          success: true, 
+          postId: insertResult.id,
+          warning: '帖子创建成功，但获取详情失败'
+        }
+      }
+
+      // 如果到达这里，说明插入和查询都成功
       console.log('帖子创建成功:', { id: postData?.id, title: postData?.title?.substring(0, 30) + '...' })
 
       // 如果有图片，上传图片

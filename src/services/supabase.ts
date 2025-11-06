@@ -23,9 +23,21 @@ export const supabase = createClient<Database>(
       headers: {
         'X-Client-Info': 'forum-connector'
       },
-      // 优化超时时间：短内容5秒，长内容10秒
+      // 优化超时时间：根据内容长度动态调整
       fetch: (url, options = {}) => {
-        const timeout = options.body && options.body.toString().length > 1000 ? 10000 : 5000
+        const contentLength = options.body ? options.body.toString().length : 0
+        let timeout = 15000 // 默认15秒
+        
+        if (contentLength > 5000) {
+          timeout = 60000 // 超长内容60秒
+        } else if (contentLength > 2000) {
+          timeout = 45000 // 长内容45秒
+        } else if (contentLength > 500) {
+          timeout = 30000 // 中等内容30秒
+        }
+        
+        console.log(`API请求超时设置: ${contentLength}字符 -> ${timeout}ms`)
+        
         return fetch(url, {
           ...options,
           signal: AbortSignal.timeout(timeout)
@@ -67,16 +79,40 @@ export const handleSupabaseError = (error: any) => {
   }
 }
 
+// 连接测试方法
+export const testConnection = async () => {
+  const start = Date.now()
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('id')
+      .limit(1)
+    
+    return {
+      latency: Date.now() - start,
+      status: error ? 'failed' : 'ok',
+      error
+    }
+  } catch (e) {
+    return {
+      latency: Date.now() - start,
+      status: 'failed',
+      error: e
+    }
+  }
+}
+
 // 重试机制
 export const withRetry = async <T>(
   operation: () => Promise<T>,
-  maxRetries = 2,
+  maxRetries = 3,
   delay = 1000
 ): Promise<T> => {
   let lastError: any
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      console.log(`第${attempt + 1}次重试执行操作...`)
       return await operation()
     } catch (error: any) {
       lastError = error
@@ -86,11 +122,19 @@ export const withRetry = async <T>(
         throw error
       }
       
+      // 超时错误增加重试延迟
+      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+        console.log(`检测到超时错误，增加重试延迟: ${delay * Math.pow(2, attempt)}ms`)
+      }
+      
       if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt)))
+        const retryDelay = delay * Math.pow(2, attempt)
+        console.log(`操作失败，${retryDelay}ms后重试...`)
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
       }
     }
   }
   
+  console.log(`所有重试尝试失败，最终错误:`, lastError)
   throw lastError
 }

@@ -123,7 +123,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import UserAvatar from './UserAvatar.vue'
 import type { PostFilters } from '@/stores/posts'
 
@@ -141,8 +141,8 @@ const emit = defineEmits<{
   'filters-changed': [filters: PostFilters]
 }>()
 
-const postStore = usePostStore()
-const { filters, getPopularTags } = postStore
+const postsStore = usePostsStore()
+const { filters, getPopularTags } = postsStore
 
 // 响应式数据
 const tagInput = ref('')
@@ -187,7 +187,7 @@ const activeFilterCount = computed(() => {
 
 // 方法
 const updateFilter = (key: keyof PostFilters, value: any) => {
-  postStore.updateFilters({ [key]: value })
+  postsStore.updateFilters({ [key]: value })
   emit('filters-changed', filters)
 }
 
@@ -220,7 +220,7 @@ const clearAuthor = () => {
 }
 
 const resetAllFilters = () => {
-  postStore.resetFilters()
+  postsStore.resetFilters()
   tagInput.value = ''
   emit('filters-changed', filters)
 }

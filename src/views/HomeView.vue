@@ -130,7 +130,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import { useMessageStore } from '@/stores/messages'
 import PostCard from '@/components/PostCard.vue'
 import CreatePostModal from '@/components/CreatePostModal.vue'
@@ -139,7 +139,7 @@ import type { PostFilters as PostFiltersType } from '@/stores/posts'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 const messageStore = useMessageStore()
 
 const showCreatePost = ref(false)
@@ -147,12 +147,12 @@ const loading = ref(false)
 const quickSearchQuery = ref('')
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
-const posts = computed(() => postStore.posts)
+const posts = computed(() => postsStore.posts)
 const unreadCount = computed(() => messageStore.unreadCount)
-const totalPosts = computed(() => postStore.totalPosts)
-const currentPage = computed(() => postStore.currentPage)
-const pageSize = computed(() => postStore.pageSize)
-const filters = computed(() => postStore.filters)
+const totalPosts = computed(() => postsStore.totalPosts)
+const currentPage = computed(() => postsStore.currentPage)
+const pageSize = computed(() => postsStore.pageSize)
+const filters = computed(() => postsStore.filters)
 
 // 计算总页数
 const totalPages = computed(() => Math.ceil(totalPosts.value / pageSize.value))
@@ -185,7 +185,7 @@ watch(filters, async () => {
 const loadPosts = async (page = 1) => {
   loading.value = true
   try {
-    await postStore.fetchPosts(page, pageSize.value)
+    await postsStore.fetchPosts(page, pageSize.value)
   } catch (error) {
     console.error('加载帖子失败:', error)
   } finally {
@@ -198,7 +198,7 @@ const handleLike = async (postId: string) => {
     router.push('/login')
     return
   }
-  await postStore.toggleLike(postId)
+  await postsStore.toggleLike(postId)
 }
 
 const handleComment = (postId: string) => {

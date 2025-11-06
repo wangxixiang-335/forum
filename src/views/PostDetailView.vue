@@ -146,7 +146,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import { supabase } from '@/services/supabase'
 import CommentItem from '@/components/CommentItem.vue'
 import type { Database } from '@/types/supabase'
@@ -154,14 +154,14 @@ import type { Database } from '@/types/supabase'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 
 const postId = route.params.id as string
 const loading = ref(true)
 const newComment = ref('')
 const commentInput = ref<HTMLTextAreaElement>()
 
-const post = computed(() => postStore.currentPost)
+const post = computed(() => postsStore.currentPost)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isPostAuthor = computed(() => {
   return authStore.user?.id === post.value?.user_id
@@ -176,7 +176,7 @@ onMounted(async () => {
 
 const loadPost = async () => {
   try {
-    await postStore.fetchPostById(postId)
+    await postsStore.fetchPostById(postId)
   } catch (error) {
     console.error('加载帖子失败:', error)
   } finally {
@@ -211,7 +211,7 @@ const handleLike = async () => {
   }
   
   try {
-    await postStore.toggleLike(postId)
+    await postsStore.toggleLike(postId)
   } catch (error) {
     console.error('点赞失败:', error)
   }
@@ -229,7 +229,7 @@ const submitComment = async () => {
   if (!newComment.value.trim()) return
   
   try {
-    const result = await postStore.createComment(postId, newComment.value.trim())
+    const result = await postsStore.createComment(postId, newComment.value.trim())
     if (result.success) {
       newComment.value = ''
       await loadComments() // 重新加载评论列表

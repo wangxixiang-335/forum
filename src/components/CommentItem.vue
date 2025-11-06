@@ -69,7 +69,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { usePostStore } from '@/stores/posts'
+import { usePostsStore } from '@/stores/posts'
 import UserAvatar from '@/components/UserAvatar.vue'
 import type { Database } from '@/types/supabase'
 
@@ -89,7 +89,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const authStore = useAuthStore()
-const postStore = usePostStore()
+const postsStore = usePostsStore()
 
 const emit = defineEmits<{
   like: [commentId: string]
@@ -117,7 +117,7 @@ const handleDeleteComment = async () => {
     return
   }
   
-  const result = await postStore.deleteComment(props.comment.id)
+  const result = await postsStore.deleteComment(props.comment.id)
   if (result.success) {
     console.log('评论删除成功')
     // 通知父组件刷新评论列表，而不是刷新整个页面
@@ -135,7 +135,7 @@ const handleTogglePin = async () => {
     return
   }
   
-  const result = await postStore.toggleCommentPin(props.comment.id, props.postId)
+  const result = await postsStore.toggleCommentPin(props.comment.id, props.postId)
   if (result.success) {
     console.log('评论置顶状态切换成功:', result.data?.is_pinned ? '已置顶' : '已取消置顶')
     // 通知父组件刷新评论列表，而不是刷新整个页面

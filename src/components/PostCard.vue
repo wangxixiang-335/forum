@@ -146,9 +146,10 @@ const authStore = useAuthStore()
 const postsStore = usePostsStore()
 const bookmarkStore = useBookmarkStore()
 
-defineEmits<{
+const emits = defineEmits<{
   like: [postId: string]
   comment: [postId: string]
+  delete: [postId: string]
 }>()
 
 // 响应式数据
@@ -209,6 +210,8 @@ const handleDeletePost = async () => {
   const result = await postsStore.deletePost(props.post.id)
   if (result.success) {
     console.log('帖子删除成功')
+    // 触发事件通知父组件刷新帖子列表
+    emits('delete', props.post.id)
   } else {
     console.error('删除帖子失败:', result.error)
     alert('删除失败: ' + result.error)

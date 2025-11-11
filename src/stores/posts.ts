@@ -39,6 +39,8 @@ export const usePostsStore = defineStore('posts', () => {
     currentPage.value = page
     
     try {
+      console.log('📝 开始获取帖子列表...', { page, limit, filters: filters.value })
+      
       const activeFilters = customFilters || filters.value
       let queryBuilder = supabase
         .from('posts')
@@ -59,14 +61,39 @@ export const usePostsStore = defineStore('posts', () => {
 
       const { data, error, count } = await withRetry(() => queryBuilder)
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ 获取帖子列表失败:', error)
+        
+        // 如果是数据库连接问题，尝试简单的连接测试
+        if (error.code === 'PGRST301' || error.message?.includes('network')) {
+          console.warn('数据库连接问题，尝试连接测试...')
+          const testResult = await testConnection()
+          console.log('连接测试结果:', testResult)
+        }
+        
+        throw error
+      }
       
       if (data) {
         posts.value = data as Post[]
         totalPosts.value = count || 0
+        console.log('✅ 帖子获取成功', { 
+          postCount: posts.value.length, 
+          totalPosts: totalPosts.value,
+          currentPage: currentPage.value
+        })
+      } else {
+        console.log('📭 未获取到帖子数据')
+        posts.value = []
+        totalPosts.value = 0
       }
     } catch (error: any) {
-      console.error('获取帖子列表失败:', error)
+      console.error('❌ 获取帖子列表失败:', error)
+      
+      // 在错误情况下设置空数组
+      posts.value = []
+      totalPosts.value = 0
+      
       throw handleSupabaseError(error)
     } finally {
       isLoading.value = false
@@ -290,8 +317,32 @@ export const usePostsStore = defineStore('posts', () => {
     const { useAuthStore } = await import('@/stores/auth')
     const authStore = useAuthStore()
     
-    if (!authStore.user) {
-      throw new Error('请先登录')
+    // 优化的认证检查 - 减少不必要的会话刷新
+    if (!authStore.user || !authStore.isAuthenticated) {
+      console.warn('创建帖子失败：用户未登录或认证状态无效')
+      
+      // 只在不必要的时候尝试刷新一次
+      try {
+        await authStore.initializeAuth(false) // 不强制刷新
+      } catch (authError) {
+        console.warn('认证刷新失败:', authError)
+      }
+      
+      // 再次检查状态
+      if (!authStore.user || !authStore.isAuthenticated) {
+        throw new Error('请先登录')
+      }
+    }
+    
+    // 简化会话验证 - 只在必要时检查
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        console.warn('会话可能已过期，但本地状态有效，继续尝试创建帖子')
+        // 不强制刷新，避免干扰数据请求流程
+      }
+    } catch (authError) {
+      console.warn('会话检查失败，但本地状态有效，继续尝试创建帖子:', authError)
     }
 
     let uploadResults: any[] = []

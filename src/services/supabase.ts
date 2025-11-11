@@ -105,7 +105,7 @@ export const testConnection = async () => {
 // 重试机制
 export const withRetry = async <T>(
   operation: () => Promise<T>,
-  maxRetries = 3,
+  maxRetries = 2, // 减少重试次数，避免长时间等待
   delay = 1000
 ): Promise<T> => {
   let lastError: any
@@ -113,25 +113,39 @@ export const withRetry = async <T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       console.log(`第${attempt + 1}次重试执行操作...`)
-      return await operation()
+      
+      // 添加超时机制，防止无限等待
+      const timeoutPromise = new Promise<T>((_, reject) => {
+        setTimeout(() => reject(new Error('操作超时')), 10000) // 10秒超时
+      })
+      
+      const result = await Promise.race([operation(), timeoutPromise])
+      return result
     } catch (error: any) {
       lastError = error
       
       // 认证错误不重试
       if (error.code === 'PGRST116') {
+        console.error('认证错误，不重试:', error)
         throw error
       }
       
-      // 超时错误增加重试延迟
-      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
-        console.log(`检测到超时错误，增加重试延迟: ${delay * Math.pow(2, attempt)}ms`)
+      // 网络错误和超时错误重试
+      if (error.message?.includes('network') || 
+          error.message?.includes('timeout') || 
+          error.message?.includes('超时') ||
+          error.code === 'PGRST301') {
+        
+        if (attempt < maxRetries) {
+          const retryDelay = delay * Math.pow(2, attempt)
+          console.log(`操作失败，${retryDelay}ms后重试...`, error.message)
+          await new Promise(resolve => setTimeout(resolve, retryDelay))
+          continue
+        }
       }
       
-      if (attempt < maxRetries) {
-        const retryDelay = delay * Math.pow(2, attempt)
-        console.log(`操作失败，${retryDelay}ms后重试...`)
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
-      }
+      // 其他错误直接抛出
+      throw error
     }
   }
   

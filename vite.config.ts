@@ -20,7 +20,7 @@ export default defineConfig({
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Content-Security-Policy': "default-src *; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com https://frontend-assets.supabase.com https://vercel.live; img-src * data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co"
+      'Content-Security-Policy': "default-src *; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com https://frontend-assets.supabase.com https://vercel.live; img-src * data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co"
     }
   },
   build: {

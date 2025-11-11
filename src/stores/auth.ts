@@ -27,10 +27,10 @@ export const useAuthStore = defineStore('auth', () => {
   const currentLevel = computed(() => profile.value?.level || 1)
   const experiencePoints = computed(() => profile.value?.experience_points || 0)
 
-  // 初始化认证状态
-  const initializeAuth = async () => {
+  // 初始化认证状态 - 优化减少不必要的会话刷新
+  const initializeAuth = async (forceRefresh = false) => {
     try {
-      console.log('开始初始化认证状态...')
+      console.log('开始初始化认证状态...', { forceRefresh })
       
       // 检查是否使用默认配置
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -56,20 +56,45 @@ export const useAuthStore = defineStore('auth', () => {
         return
       }
       
-      const { data: { session }, error } = await supabase.auth.getSession()
+      // 只在必要时刷新会话状态，避免干扰数据请求
+      let sessionResult
       
-      if (error) {
-        console.error('获取session失败:', error)
+      if (forceRefresh) {
+        console.log('强制刷新会话...')
+        try {
+          await supabase.auth.refreshSession()
+        } catch (refreshError) {
+          console.warn('刷新会话失败:', refreshError)
+        }
+      }
+      
+      // 获取当前会话状态
+      sessionResult = await supabase.auth.getSession()
+      
+      if (sessionResult.error) {
+        console.error('获取session失败:', sessionResult.error)
         return
       }
       
+      const { session } = sessionResult.data
+      
       if (session?.user) {
-        console.log('找到有效session，用户ID:', session.user.id)
-        user.value = session.user
-        await fetchProfile()
-        console.log('认证初始化完成')
+        // 只有当用户确实改变或强制刷新时才更新
+        if (forceRefresh || !user.value || user.value.id !== session.user.id) {
+          console.log('找到有效session，用户ID:', session.user.id)
+          user.value = session.user
+          await fetchProfile()
+          console.log('认证初始化完成')
+        } else {
+          console.log('用户状态未变化，跳过重复初始化')
+        }
       } else {
         console.log('未找到有效session')
+        // 确保状态一致
+        if (user.value) {
+          user.value = null
+          profile.value = null
+        }
       }
     } catch (error) {
       console.warn('认证初始化失败:', error)
@@ -576,25 +601,48 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 监听认证状态变化
+  // 简化的跨标签页同步 - 避免干扰主要流程
+  const broadcastAuthChange = (action: string) => {
+    console.log('📢 认证状态变化:', action)
+    
+    // 只设置一个简单的标记，不触发任何事件
+    const syncTimestamp = Date.now()
+    
+    // 设置同步标记（静默方式）
+    try {
+      localStorage.setItem('auth-sync-timestamp', syncTimestamp.toString())
+    } catch (error) {
+      console.warn('设置同步标记失败:', error)
+    }
+  }
+
+  // 最小化的认证状态监听 - 只处理关键的登录/登出
   supabase.auth.onAuthStateChange(async (event, session) => {
     console.log('🔐 认证状态变化:', event, session?.user?.id)
     
+    // 只处理登录和登出事件
     if (event === 'SIGNED_IN' && session?.user) {
-      console.log('✅ 用户登录成功，设置用户信息')
-      user.value = session.user
-      await fetchProfile()
+      // 只有当用户确实改变时才更新
+      if (!user.value || user.value.id !== session.user.id) {
+        console.log('✅ 用户登录成功，设置用户信息')
+        user.value = session.user
+        await fetchProfile()
+        
+        // 只在状态真正变化时广播
+        broadcastAuthChange('SIGNED_IN')
+      }
     } else if (event === 'SIGNED_OUT') {
-      console.log('👋 用户登出，清除用户信息')
-      user.value = null
-      profile.value = null
-    } else if (event === 'TOKEN_REFRESHED') {
-      console.log('🔄 令牌已刷新')
-      // 不要在这里刷新页面
-    } else if (event === 'USER_UPDATED') {
-      console.log('👤 用户信息已更新')
-      // 不要在这里刷新页面
+      // 只有当确实登出时才清除
+      if (user.value) {
+        console.log('👋 用户登出，清除用户信息')
+        user.value = null
+        profile.value = null
+        
+        // 广播登出事件
+        broadcastAuthChange('SIGNED_OUT')
+      }
     }
+    // 忽略所有其他事件，包括 TOKEN_REFRESHED 和 USER_UPDATED
   })
 
   return {

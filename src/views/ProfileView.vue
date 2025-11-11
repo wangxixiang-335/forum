@@ -18,6 +18,10 @@
               <i class="bi bi-gear"></i>
               账号设置
             </button>
+            <button @click="handleSignOut" class="nav-link signout-btn">
+              <i class="bi bi-box-arrow-right"></i>
+              退出
+            </button>
           </nav>
         </div>
         <h1>{{ isViewingOtherUser ? '用户资料' : '个人中心' }}</h1>
@@ -129,6 +133,7 @@
                 :post="post"
                 @like="handleLike"
                 @comment="handleComment"
+                @delete="handlePostDeleted"
               />
             </div>
             <div v-else class="no-posts">
@@ -173,7 +178,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePostsStore } from '@/stores/posts'
 import PostCard from '@/components/PostCard.vue'
@@ -183,6 +188,7 @@ import AccountSettings from '@/components/AccountSettings.vue'
 import type { Database } from '@/types/supabase'
 
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const postsStore = usePostsStore()
 
@@ -424,6 +430,12 @@ const handleComment = (postId: string) => {
   console.log('评论帖子:', postId)
 }
 
+const handlePostDeleted = (postId: string) => {
+  // 帖子被删除，立即从UI中移除
+  userPosts.value = userPosts.value.filter(post => post.id !== postId)
+  console.log('帖子已从用户帖子列表中移除:', postId)
+}
+
 const handleAvatarSelect = async (avatar: any) => {
   try {
     // 先关闭模态框，避免DOM操作冲突
@@ -512,6 +524,18 @@ const loadOtherUserData = async () => {
     console.error('加载其他用户数据失败:', error)
   } finally {
     loading.value = false
+  }
+}
+
+// 登出处理函数
+const handleSignOut = async () => {
+  try {
+    await authStore.signOut()
+    console.log('✅ 用户已退出')
+    // 登出后回到首页
+    router.push('/')
+  } catch (error) {
+    console.error('退出失败:', error)
   }
 }
 
@@ -1063,6 +1087,16 @@ const updateSignature = async () => {
 .nav button.nav-link:hover {
   background: rgba(24, 144, 255, 0.1);
   color: #1890ff;
+}
+
+.signout-btn:hover {
+  background: rgba(255, 77, 79, 0.1) !important;
+  color: #ff4d4f !important;
+}
+
+.signout-btn:hover {
+  background: rgba(255, 77, 79, 0.1) !important;
+  color: #ff4d4f !important;
 }
 
 </style>

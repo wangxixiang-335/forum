@@ -20,6 +20,10 @@
               消息中心
               <span v-if="unreadCount > 0" class="unread-indicator">{{ unreadCount }}</span>
             </RouterLink>
+            <button @click="handleSignOut" class="nav-link signout-btn">
+              <i class="bi bi-box-arrow-right"></i>
+              退出
+            </button>
           </template>
         </nav>
       </div>
@@ -70,6 +74,7 @@
             :post="post" 
             @like="handleLike"
             @comment="handleComment"
+            @delete="handlePostDeleted"
           />
           
           <div v-if="loading" class="loading">
@@ -132,6 +137,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePostsStore } from '@/stores/posts'
 import { useMessageStore } from '@/stores/messages'
+import { supabase } from '@/services/supabase'
 import PostCard from '@/components/PostCard.vue'
 import CreatePostModal from '@/components/CreatePostModal.vue'
 import PostFilters from '@/components/PostFilters.vue'
@@ -171,10 +177,42 @@ const displayedPages = computed(() => {
 })
 
 onMounted(async () => {
-  await loadPosts()
-  if (isAuthenticated.value) {
-    await messageStore.fetchUnreadCount()
+  console.log('🏠 HomeView组件已挂载，开始加载数据')
+  
+  // 检查认证状态，但不重复初始化
+  try {
+    console.log('🔐 检查认证状态')
+    
+    // 如果认证状态还未初始化，等待一小段时间让App.vue完成初始化
+    if (!authStore.user && authStore.isLoading) {
+      console.log('等待认证状态初始化...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    
+    console.log('认证状态检查完成:', {
+      hasUser: !!authStore.user,
+      isAuthenticated: authStore.isAuthenticated,
+      isLoading: authStore.isLoading
+    })
+    
+  } catch (error) {
+    console.warn('认证状态检查失败，但继续加载帖子:', error)
   }
+  
+  // 加载帖子
+  await loadPosts()
+  
+  // 如果已登录，加载未读消息数
+  if (isAuthenticated.value) {
+    console.log('📨 加载未读消息数')
+    try {
+      await messageStore.fetchUnreadCount()
+    } catch (error) {
+      console.warn('加载未读消息数失败:', error)
+    }
+  }
+  
+  console.log('✅ HomeView数据加载完成')
 })
 
 // 监听过滤器变化
@@ -185,9 +223,20 @@ watch(filters, async () => {
 const loadPosts = async (page = 1) => {
   loading.value = true
   try {
+    console.log('🔄 开始加载帖子...', { page, pageSize: pageSize.value })
     await postsStore.fetchPosts(page, pageSize.value)
-  } catch (error) {
-    console.error('加载帖子失败:', error)
+    console.log('✅ 帖子加载成功', { 
+      postCount: posts.value.length, 
+      totalPosts: totalPosts.value 
+    })
+  } catch (error: any) {
+    console.error('❌ 加载帖子失败:', error)
+    
+    // 提供更详细的错误信息
+    if (error.message?.includes('PGRST')) {
+      console.warn('数据库连接错误，尝试使用简化模式加载')
+      // 可以添加备用数据源或错误提示
+    }
   } finally {
     loading.value = false
   }
@@ -206,6 +255,12 @@ const handleComment = (postId: string) => {
   router.push(`/post/${postId}`)
 }
 
+const handlePostDeleted = (postId: string) => {
+  // 帖子被删除，立即从UI中移除
+  postsStore.posts = postsStore.posts.filter(post => post.id !== postId)
+  postsStore.totalPosts = Math.max(0, postsStore.totalPosts - 1)
+}
+
 const handlePostCreated = () => {
   showCreatePost.value = false
   loadPosts() // 重新加载帖子列表
@@ -217,6 +272,17 @@ const handleQuickSearch = () => {
       path: '/search',
       query: { q: quickSearchQuery.value.trim() }
     })
+  }
+}
+
+const handleSignOut = async () => {
+  try {
+    await authStore.signOut()
+    console.log('✅ 用户已退出')
+    // 登出后回到首页
+    router.push('/')
+  } catch (error) {
+    console.error('退出失败:', error)
   }
 }
 
@@ -306,6 +372,19 @@ const getEmptyMessage = () => {
 .nav-link:hover {
   background: rgba(24, 144, 255, 0.1);
   color: #1890ff;
+}
+
+.signout-btn {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.signout-btn:hover {
+  background: rgba(255, 77, 79, 0.1);
+  color: #ff4d4f;
 }
 
 .unread-indicator {
